@@ -1,0 +1,51 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © <your-tradingview-username>
+
+// ============================================================================
+// Title:        <Strategy Name>
+// Description:  <One or two sentence description of the entry/exit logic.>
+// Version:      1.0.0
+// Changelog:    See CHANGELOG.md
+// ============================================================================
+//
+// Copy this file as a starting point for a new strategy. Keep the section
+// comments (Inputs / Calculations / Orders / Plots) and the input-group
+// convention so every script in the project reads the same way.
+// See docs/STYLE_GUIDE.md for the full conventions.
+
+//@version=6
+strategy("My New Strategy", shorttitle = "MNS", overlay = true,
+     initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 10,
+     commission_type = strategy.commission.percent, commission_value = 0.05)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_CORE = "Core Settings"
+var string GRP_RISK = "Risk Management"
+
+length   = input.int(14, "Length", minval = 1, group = GRP_CORE)
+srcInput = input.source(close, "Source", group = GRP_CORE)
+
+useStop = input.bool(true, "Use ATR stop-loss / take-profit", group = GRP_RISK)
+atrLen  = input.int(14, "ATR length", minval = 1, group = GRP_RISK)
+atrMult = input.float(2.0, "ATR stop multiplier", minval = 0.1, step = 0.1, group = GRP_RISK)
+
+// ---- Calculations -------------------------------------------------------------
+value    = ta.sma(srcInput, length)
+atrValue = ta.atr(atrLen)
+
+longCondition  = ta.crossover(srcInput, value)
+shortCondition = ta.crossunder(srcInput, value)
+
+// ---- Orders ---------------------------------------------------------------------
+if longCondition
+    strategy.entry("Long", strategy.long)
+    if useStop
+        strategy.exit("Long exit", from_entry = "Long", stop = close - atrValue * atrMult)
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+    if useStop
+        strategy.exit("Short exit", from_entry = "Short", stop = close + atrValue * atrMult)
+
+// ---- Plots ----------------------------------------------------------------------
+plot(value, "Value", color = color.new(color.blue, 0))

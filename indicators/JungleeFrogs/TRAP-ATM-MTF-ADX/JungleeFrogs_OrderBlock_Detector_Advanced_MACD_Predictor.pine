@@ -1,0 +1,1797 @@
+//@version=6
+indicator("JungleeFrogs \"OrderBlock Detector + Advanced MACD Predictor\"", shorttitle="JF-OB+AMP", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=50, dynamic_requests=true)
+
+// NOTE: TradingView table cells do not support true font-weight/bold.
+// Right-side value columns are rendered with larger HIGH-CONTRAST text to simulate bold visibility.
+
+//=========================================================
+// MINIMAL CONFIG CONTROLS
+//=========================================================
+groupMain = "Main Controls"
+showPivots      = input.bool(true, "Show Pivot / R1 R2 R3 / S1 S2 S3", group=groupMain)
+showOrderBlocks = input.bool(true, "Show Major Demand / Supply Zones", group=groupMain)
+showEMAs        = input.bool(true, "Show EMA 9 / 20 / 50 / 200 + Crosses", group=groupMain)
+showHiddenOTC   = input.bool(true, "Show Hidden Order / OTC Proxy", group=groupMain)
+showOiBars      = input.bool(true, "Show CE/PE OI Mini Bars", group=groupMain)
+showOptionStats = input.bool(true, "Show ATM CE/PE + Straddle + Est. Strangle", group=groupMain)
+showProbability = input.bool(true, "Show Probability / Forecast", group=groupMain)
+showAdvance     = input.bool(true, "Show Advance Warnings", group=groupMain)
+showAdxDmi      = input.bool(true, "Show ADX / DI+ / DI- Panel", group=groupMain)
+showStrShock    = input.bool(true, "Enable STR Buzz Sound Alert Only", group=groupMain)
+showProbInsideCandles = input.bool(true, "Show Bull/Bear Probability Inside Candles", group=groupMain)
+showAdxDmiBellBuzz = input.bool(true, "ADX/DMI Cross Bell Buzz Alert", group=groupMain)
+showAmpMacdPredictor = input.bool(true, "Show Advanced MACD Predictor", group=groupMain)
+showPressurePriority = input.bool(true, "Show Demand/Supply Pressure Priority", group=groupMain)
+
+//=========================================================
+// COLORS
+//=========================================================
+groupColors = "Color Settings"
+colDemandWarn = input.color(color.new(color.green, 0), "Advance DEMAND Label", group=groupColors)
+colSupplyWarn = input.color(color.new(color.red, 0), "Advance SUPPLY Label", group=groupColors)
+colPivot = input.color(color.yellow, "Pivot", group=groupColors)
+
+colR1    = input.color(color.orange, "R1", group=groupColors)
+colR2    = input.color(color.rgb(255, 120, 0), "R2", group=groupColors)
+colR3    = input.color(color.red, "R3", group=groupColors)
+
+colS1    = input.color(color.aqua, "S1", group=groupColors)
+colS2    = input.color(color.blue, "S2", group=groupColors)
+colS3    = input.color(color.navy, "S3", group=groupColors)
+
+colDemandFill   = input.color(color.new(color.green, 82), "Demand Zone Fill", group=groupColors)
+colDemandBorder = input.color(color.green, "Demand Zone Border", group=groupColors)
+colSupplyFill   = input.color(color.new(color.red, 82), "Supply Zone Fill", group=groupColors)
+colSupplyBorder = input.color(color.red, "Supply Zone Border", group=groupColors)
+
+colEMA9   = input.color(color.yellow, "EMA 9", group=groupColors)
+colEMA20  = input.color(color.orange, "EMA 20", group=groupColors)
+colEMA50  = input.color(color.red, "EMA 50", group=groupColors)
+colEMA200 = input.color(color.blue, "EMA 200", group=groupColors)
+
+colGolden = input.color(color.rgb(255, 215, 0), "Golden Cross", group=groupColors)
+colDeath  = input.color(color.black, "Death Cross", group=groupColors)
+
+colHiddenDemand = input.color(color.green, "OTC BUY Diamond", group=groupColors)
+colHiddenSupply = input.color(color.red, "OTC SELL Diamond", group=groupColors)
+
+colBullProb = input.color(color.new(color.green, 0), "Bull Probability", group=groupColors)
+colBearProb = input.color(color.new(color.red, 0), "Bear Probability", group=groupColors)
+colWarn     = input.color(color.new(color.orange, 0), "Advance Warning", group=groupColors)
+
+colCeOiBase     = input.color(color.new(color.red, 78), "CE OI Total Mini Bar", group=groupColors)
+colPeOiBase     = input.color(color.new(color.green, 78), "PE OI Total Mini Bar", group=groupColors)
+colCeOiIncrease = input.color(color.red, "CE OI Increase", group=groupColors)
+colCeOiDecrease = input.color(color.green, "CE OI Decrease", group=groupColors)
+colPeOiIncrease = input.color(color.green, "PE OI Increase", group=groupColors)
+colPeOiDecrease = input.color(color.red, "PE OI Decrease", group=groupColors)
+
+colAdx     = input.color(color.new(color.yellow, 0), "ADX Value", group=groupColors)
+colDiPlus  = input.color(color.new(color.green, 0), "DI+ Value", group=groupColors)
+colDiMinus = input.color(color.new(color.red, 0), "DI- Value", group=groupColors)
+colDemandStrShock = input.color(color.new(color.lime, 0), "Demand STR Massive Change", group=groupColors)
+colSupplyStrShock = input.color(color.new(color.red, 0), "Supply STR Massive Change", group=groupColors)
+colSafeBuyArrow = input.color(color.new(color.lime, 0), "Safe BUY Pointer Arrow", group=groupColors)
+colSafeSellArrow = input.color(color.new(color.red, 0), "Safe SELL Pointer Arrow", group=groupColors)
+colBullCandleProb = input.color(color.new(color.blue, 0), "Bull Segment In Candle", group=groupColors)
+colBearCandleProb = input.color(color.new(color.yellow, 0), "Bear Segment In Candle", group=groupColors)
+colBullTextInCandle = input.color(color.new(color.white, 0), "Bull Text In Candle", group=groupColors)
+colBearTextInCandle = input.color(color.new(color.black, 0), "Bear Text In Candle", group=groupColors)
+colAdxDmiBellBuzz = input.color(color.new(color.orange, 0), "ADX/DMI Bell Buzz Icon", group=groupColors)
+colAmpStrongBuy = input.color(color.new(color.lime, 0), "AMP Strong Buy", group=groupColors)
+colAmpBuy = input.color(color.new(color.green, 0), "AMP Buy", group=groupColors)
+colAmpStrongSell = input.color(color.new(color.red, 0), "AMP Strong Sell", group=groupColors)
+colAmpSell = input.color(color.new(color.maroon, 0), "AMP Sell", group=groupColors)
+colAmpDashBg = input.color(color.new(color.black, 20), "AMP Dashboard Background", group=groupColors)
+colPressureBuy = input.color(color.new(color.lime, 0), "Pressure Priority BUY", group=groupColors)
+colPressureSell = input.color(color.new(color.red, 0), "Pressure Priority SELL", group=groupColors)
+colPressureWait = input.color(color.new(color.orange, 0), "Pressure Priority WAIT", group=groupColors)
+colRedTextCellBg = input.color(color.new(color.yellow, 0), "Table Background When Text Is RED", group=groupColors)
+
+//=========================================================
+// BASIC SETTINGS
+//=========================================================
+groupTech = "Internal Settings"
+// Pivot timeframe dropdown restored.
+// Use D for full-day straight levels, 60 for 1-hour levels, etc.
+useChartTfPivot = input.bool(false, "Use Current Chart Timeframe For Pivot", group=groupTech)
+pivotTfInput    = input.timeframe("D", "Pivot Level Timeframe", group=groupTech)
+pivotTf         = useChartTfPivot ? timeframe.period : pivotTfInput
+obLookback = input.int(20, "Order Block Search Lookback", minval=3, group=groupTech)
+obLifeBars = input.int(40, "Order Block Visible Bars", minval=1, group=groupTech)
+ema1Len    = input.int(9, "EMA 9", group=groupTech)
+ema2Len    = input.int(20, "EMA 20", group=groupTech)
+ema3Len    = input.int(50, "EMA 50", group=groupTech)
+ema4Len    = input.int(200, "EMA 200", group=groupTech)
+atrLen     = input.int(14, "ATR Length", group=groupTech)
+stableVolMult = input.float(1.8, "Hidden Order Vol Mult", step=0.1, group=groupTech)
+narrowRangeATR = input.float(0.7, "Hidden Order Narrow Range ATR Mult", step=0.1, group=groupTech)
+warnDistanceATR = input.float(0.50, "Advance Warning Distance ATR", step=0.1, group=groupTech)
+zoneMinGapATR = input.float(0.30, "Minimum Gap Between Supply/Demand Boxes ATR", minval=0.05, step=0.05, group=groupTech)
+forecastZoneGapATR = input.float(3.00, "Minimum Gap Forecast From Supply/Demand ATR", minval=0.50, step=0.25, group=groupTech)
+forecastRightOffsetBars = input.int(1, "Forecast Box Right Offset Bars", minval=0, maxval=50, group=groupTech)
+forecastAlignCurrentCandle = input.bool(true, "Align Forecast Box Near Current Candle", group=groupTech)
+strShockPct = input.float(50.0, "Massive STR Change Threshold %", minval=1.0, step=1.0, group=groupTech)
+strShockAbs = input.float(25.0, "Massive STR Minimum Absolute Change", minval=0.0, step=1.0, group=groupTech)
+strShockCooldownBars = input.int(10, "Massive STR Alert Cooldown Bars", minval=1, group=groupTech)
+showOldStrInZoneLabel = input.bool(false, "Show OLD STR Beside NEW STR In Zone Label", group=groupTech)
+usePivotFallbackZones = input.bool(true, "Auto Show 5m Pivot Supply/Demand Zones", group=groupTech)
+adxDiLen = input.int(14, "ADX DI Length", minval=1, group=groupTech)
+adxSmoothingLen = input.int(14, "ADX Smoothing", minval=1, group=groupTech)
+adxTrendLevel = input.float(20.0, "ADX Trend Level", minval=1.0, step=0.5, group=groupTech)
+adxStrongLevel = input.float(25.0, "ADX Strong Trend Level", minval=1.0, step=0.5, group=groupTech)
+
+// Safe Entry Pointer Arrow settings.
+// These arrows are confluence-based trade suggestions only; they do not guarantee profit.
+showSafeEntryArrows = input.bool(true, "Show Safe BUY/SELL Entry Pointer Arrows", group=groupTech)
+safeEntryMinAdx = input.float(25.0, "Safe Entry Minimum ADX", minval=1.0, step=0.5, group=groupTech)
+safeEntryMinProbGap = input.float(10.0, "Safe Entry Minimum Bull/Bear Probability Gap %", minval=0.0, step=1.0, group=groupTech)
+safeEntryMinBodyATR = input.float(0.20, "Safe Entry Minimum Candle Body ATR", minval=0.0, step=0.05, group=groupTech)
+safeEntryCooldownBars = input.int(8, "Safe Entry Arrow Cooldown Bars", minval=1, maxval=100, group=groupTech)
+safeEntryUseOiConfirm = input.bool(true, "Safe Entry Use CE/PE OI Confirmation", group=groupTech)
+safeEntryAvoidOppositeZone = input.bool(true, "Safe Entry Avoid Opposite Zone", group=groupTech)
+safeEntryAlertOnArrow = input.bool(true, "Safe Entry Alert On Arrow", group=groupTech)
+
+// Bull/Bear probability candle overlay settings.
+probCandleWidth = input.int(6, "Bull/Bear Candle Segment Width", minval=1, maxval=20, group=groupTech)
+probCandleHistory = input.int(20, "Bull/Bear Candle Visible History", minval=5, maxval=60, group=groupTech)
+showProbTextInsideLatest = input.bool(false, "Show BU / BE Text In Latest Candle", group=groupTech)
+
+// ADX/DMI bell-buzz alert settings.
+adxDmiBuzzSeconds = input.int(60, "ADX/DMI Buzz Icon Visible Seconds / Auto Vanish Within 1 Minute", minval=1, maxval=60, group=groupTech)
+adxDmiBellRepeatCount = input.int(10, "ADX/DMI Bell Alert Repeat Count", minval=1, maxval=10, group=groupTech)
+showAdxDmiBellBuzzChartIcon = input.bool(true, "Show Animated ADX/DMI Buzz Icon Outside Panel", group=groupTech)
+adxDmiBuzzIconXOffset = input.int(3, "ADX/DMI Buzz Icon X Offset Bars", minval=0, maxval=30, group=groupTech)
+adxDmiBuzzIconYOffsetATR = input.float(3.0, "ADX/DMI Buzz Icon Y Offset ATR", minval=0.25, maxval=10.0, step=0.25, group=groupTech)
+optimizeHeavyDrawings = input.bool(true, "Optimize Heavy Drawings / Reduce Delay", group=groupTech)
+
+// Advanced MACD Predictor settings.
+groupAmpMacd = "Advanced MACD Predictor"
+ampFastLen = input.int(12, "AMP MACD Fast EMA Length", minval=1, group=groupAmpMacd)
+ampSlowLen = input.int(26, "AMP MACD Slow EMA Length", minval=1, group=groupAmpMacd)
+ampSignalLen = input.int(9, "AMP MACD Signal EMA Length", minval=1, group=groupAmpMacd)
+ampConfirmTf = input.timeframe("15", "AMP Confirmation Timeframe", group=groupAmpMacd)
+ampRegimeTf = input.timeframe("60", "AMP Market Regime Timeframe", group=groupAmpMacd)
+ampExecutionTf = input.timeframe("5", "AMP Recommended Execution / Trigger Timeframe", group=groupAmpMacd)
+ampFineEntryTf = input.timeframe("3", "AMP Fine Entry / Scalping Timeframe", group=groupAmpMacd)
+ampPivotLegs = input.int(5, "AMP Divergence Pivot Left/Right", minval=1, group=groupAmpMacd)
+ampStrongTh = input.int(80, "AMP Strong Buy/Sell Threshold", minval=50, maxval=100, group=groupAmpMacd)
+ampSignalTh = input.int(65, "AMP Buy/Sell Threshold", minval=40, maxval=99, group=groupAmpMacd)
+ampCooldownBars = input.int(3, "AMP Signal Cooldown Bars", minval=0, group=groupAmpMacd)
+ampSlAtrMult = input.float(1.5, "AMP Stop Loss ATR Multiplier", minval=0.1, step=0.1, group=groupAmpMacd)
+ampShowSignals = input.bool(true, "AMP Show BUY/SELL Labels", group=groupAmpMacd)
+ampShowDashboard = input.bool(true, "AMP Show Dashboard Table", group=groupAmpMacd)
+ampDashboardPositionInput = input.string("Top Right", "AMP Dashboard Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupAmpMacd)
+ampUseStrictEdge = input.bool(true, "AMP Require Bull/Bear Score Edge", group=groupAmpMacd)
+ampShowEarlySignals = input.bool(true, "AMP Show EARLY BUY/SELL 1-Candle Advance", group=groupAmpMacd)
+ampEarlyScoreBuffer = input.int(15, "AMP Early Signal Score Buffer", minval=1, maxval=30, group=groupAmpMacd)
+ampEarlyMacdGapAtr = input.float(0.25, "AMP Early MACD Gap Max ATR", minval=0.01, maxval=2.00, step=0.01, group=groupAmpMacd)
+ampEarlyNeedTrendBias = input.bool(false, "AMP Early Require EMA Trend Bias", group=groupAmpMacd)
+
+// Demand/Supply pressure priority settings.
+// This is designed for earlier trade awareness: it compares STR, OI, Volume, price location, and ADX/DMI direction.
+groupPressure = "Demand/Supply Pressure Priority"
+pressureDominanceThreshold = input.float(8.0, "Pressure Priority Minimum Edge", minval=1.0, maxval=50.0, step=1.0, group=groupPressure)
+pressureNearZoneATR = input.float(0.75, "Pressure Near-Zone Distance ATR", minval=0.10, maxval=5.00, step=0.05, group=groupPressure)
+pressureShowAdvanceLabel = input.bool(true, "Show ADV BUY/SELL Pressure Label", group=groupPressure)
+pressureAlertOnAdvance = input.bool(true, "Alert On Pressure Priority Advance Signal", group=groupPressure)
+pressureAlertCooldownBars = input.int(3, "Pressure Alert Cooldown Bars", minval=1, maxval=100, group=groupPressure)
+
+// Anti-trap / early-decision safety layer.
+groupEarlyGuard = "Early Signal Anti-Trap Guard"
+trapCompressionATR = input.float(1.00, "Trap: Max Supply-Demand Gap ATR", minval=0.10, maxval=5.00, step=0.05, group=groupEarlyGuard)
+trapBothStrongScore = input.float(58.0, "Trap: Both Zones Strong Score", minval=1.0, maxval=100.0, step=1.0, group=groupEarlyGuard)
+trapLowEdge = input.float(6.0, "Trap: Balanced Pressure Edge", minval=1.0, maxval=25.0, step=1.0, group=groupEarlyGuard)
+triggerBufferTicks = input.int(1, "Trigger Buffer Ticks", minval=0, maxval=100, group=groupEarlyGuard)
+invalidBufferATR = input.float(0.20, "Invalidation Buffer ATR", minval=0.00, maxval=3.00, step=0.05, group=groupEarlyGuard)
+showTrapRiskLabels = input.bool(true, "Show TRAP / FAKE Breakout Labels", group=groupEarlyGuard)
+
+//=========================================================
+// OPTION INPUTS
+//=========================================================
+groupOpt = "ATM CE / PE Premium Inputs"
+atmCeSymbol = input.string("", "Manual ATM CE Symbol Optional", group=groupOpt)
+atmPeSymbol = input.string("", "Manual ATM PE Symbol Optional", group=groupOpt)
+autoBuildAtmSymbols = input.bool(true, "Auto Build ATM CE/PE Symbols", group=groupOpt)
+optionExchange = input.string("NSE", "Option Exchange Prefix", group=groupOpt)
+optionRoot = input.string("AUTO", "Option Root / Underlying", group=groupOpt)
+optionExpiryYYMMDD = input.string("", "Manual Option Expiry YYMMDD (used when Immediate Expiry Off)", group=groupOpt)
+useImmediateExpiry = input.bool(true, "Always Use Immediate Expiry", group=groupOpt)
+// TradingView sometimes throws parser errors on string option arrays in some editor states.
+// Use numeric weekday to avoid weekday-list translation issue.
+immediateExpiryDayNo = input.int(2, "Immediate Expiry Day Number (Mon=1 Tue=2 Wed=3 Thu=4 Fri=5)", minval=1, maxval=5, group=groupOpt)
+immediateExpiryWeekdayText = immediateExpiryDayNo == 1 ? "Monday" : immediateExpiryDayNo == 2 ? "Tuesday" : immediateExpiryDayNo == 3 ? "Wednesday" : immediateExpiryDayNo == 4 ? "Thursday" : "Friday"
+expiryHolidayShiftBackDays = input.int(0, "Holiday Shift Back Days", minval=0, maxval=3, group=groupOpt)
+expiryCutoffHourIST = input.int(15, "Expiry Cutoff Hour IST", minval=0, maxval=23, group=groupOpt)
+expiryCutoffMinuteIST = input.int(30, "Expiry Cutoff Minute IST", minval=0, maxval=59, group=groupOpt)
+strikeStep  = input.int(50, "ATM Strike Step", minval=1, group=groupOpt)
+strangleFactor = input.float(0.65, "Estimated Strangle = Straddle x", step=0.05, group=groupOpt)
+
+//=========================================================
+// OI INPUT
+//=========================================================
+groupOI = "Optional OI Feed"
+oiSymbol = input.symbol("", "OI Symbol (optional)", group=groupOI)
+callOiSymbol = input.symbol("", "Manual Call OI Symbol Optional", group=groupOI)
+putOiSymbol  = input.symbol("", "Manual Put OI Symbol Optional", group=groupOI)
+oiBarLookback = input.int(50, "OI Mini Bar Normalization Lookback", minval=5, group=groupOI)
+oiBarMaxHeightATR = input.float(0.80, "OI Mini Bar Max Height ATR", minval=0.10, step=0.05, group=groupOI)
+oiBarGapATR = input.float(0.25, "OI Mini Bar Gap From Candle ATR", minval=0.05, step=0.05, group=groupOI)
+oiBarHistory = input.int(25, "OI Mini Bar Visible History", minval=5, maxval=35, group=groupOI)
+showOiLegend = input.bool(true, "Show CE/PE OI Mini Bar Legend", group=groupOI)
+
+// Auto CALL/PUT OI pressure symbols. Pine cannot write values into manual input boxes,
+// but it can build and request internal OI symbols automatically when manual OI fields are blank.
+autoBuildCallPutOiPressure = input.bool(true, "Auto Build CALL/PUT OI Pressure Symbols", group=groupOI)
+oiPressureOffsetPoints = input.int(200, "Auto OI Pressure Offset Points: CALL - / PUT +", minval=0, step=50, group=groupOI)
+optionRootAutoMode = input.bool(true, "Auto Detect Option Root From Chart When Root Blank/AUTO", group=groupOI)
+showAutoOiSymbolsInLegend = input.bool(true, "Show Auto OI Symbols In Legend", group=groupOI)
+
+//=========================================================
+// PRICE / EMA / ATR / VWAP
+//=========================================================
+ema9   = ta.ema(close, ema1Len)
+ema20  = ta.ema(close, ema2Len)
+ema50  = ta.ema(close, ema3Len)
+ema200 = ta.ema(close, ema4Len)
+atrVal = ta.atr(atrLen)
+vwapVal = ta.vwap(hlc3)
+volSma = ta.sma(volume, 20)
+
+//=========================================================
+// ADX / DI+ / DI-
+//=========================================================
+[diPlus, diMinus, adxVal] = ta.dmi(adxDiLen, adxSmoothingLen)
+// Pre-calculate crossover/crossunder values on EVERY bar.
+// This removes TradingView warnings caused by calling ta.crossover()/ta.crossunder() directly inside conditional alert expressions.
+diPlusCrossAboveDiMinus = ta.crossover(diPlus, diMinus)
+diMinusCrossAboveDiPlus = ta.crossunder(diPlus, diMinus)
+adxCrossAboveTrendLevel = ta.crossover(adxVal, adxTrendLevel)
+// Dedicated ADX/DMI crossing states for bell buzz.
+// ta.cross() is calculated globally on every bar to avoid TradingView consistency warnings.
+diPlusDiMinusAnyCross = ta.cross(diPlus, diMinus)
+adxCrossDiPlus = ta.cross(adxVal, diPlus)
+adxCrossDiMinus = ta.cross(adxVal, diMinus)
+adxDmiAnyCross = showAdxDmiBellBuzz and (diPlusDiMinusAnyCross or adxCrossDiPlus or adxCrossDiMinus)
+diBiasText = diPlus > diMinus ? "BULLISH" : diMinus > diPlus ? "BEARISH" : "NEUTRAL"
+adxStrengthText = adxVal >= adxStrongLevel ? "STRONG TREND" : adxVal >= adxTrendLevel ? "TRENDING" : "RANGE / WEAK"
+
+//=========================================================
+// MASSIVE STR CHANGE HELPER
+//=========================================================
+f_str_change_pct(_new, _old) =>
+    na(_new) or na(_old) ? na : math.abs(_new - _old) / math.max(math.abs(_old), 1.0) * 100.0
+
+f_str_change_signed(_new, _old) =>
+    na(_new) or na(_old) ? na : _new - _old
+
+// Safe zone value helpers. Prevent VOL=0 and STR=NaN labels when the selected
+// symbol/timeframe has delayed/blank volume on the exact source candle.
+f_safe_zone_volume(_primary, _fallback1, _fallback2) =>
+    // Always return a visible numeric value. Some symbols/timeframes return blank or zero volume on the zone source candle.
+    // Priority: source-candle volume -> current/alternate volume -> average volume -> 1 minimum placeholder.
+    not na(_primary) and _primary > 0 ? _primary : not na(_fallback1) and _fallback1 > 0 ? _fallback1 : not na(_fallback2) and _fallback2 > 0 ? _fallback2 : 1.0
+
+f_safe_zone_score(_vol, _volSma, _body, _atr) =>
+    safeVol = not na(_vol) and _vol > 0 ? _vol : na
+    safeVolSma = not na(_volSma) and _volSma > 0 ? _volSma : safeVol
+    safeVolRatio = not na(safeVol) and not na(safeVolSma) ? safeVol / math.max(safeVolSma, 1.0) : 1.0
+    safeBody = not na(_body) and _body > 0 ? _body : syminfo.mintick
+    safeAtr = not na(_atr) and _atr > 0 ? _atr : syminfo.mintick
+    scoreRaw = safeVolRatio * 50.0 + (safeBody / math.max(safeAtr, syminfo.mintick)) * 50.0
+    na(scoreRaw) ? 50.0 : scoreRaw
+
+
+//=========================================================
+// ADVANCED MACD PREDICTOR — MERGED AMP-MTF MODULE
+//=========================================================
+// Integrated from the Advanced MACD Predictor concept into JungleeFrogs.
+// Variable names are prefixed with amp* to avoid conflicts with the existing EMA, ADX/DMI, ATR, volume, and probability engines.
+ampFastEma = ta.ema(close, ampFastLen)
+ampSlowEma = ta.ema(close, ampSlowLen)
+ampMacdCurr = ampFastEma - ampSlowEma
+ampSigCurr = ta.ema(ampMacdCurr, ampSignalLen)
+ampHistCurr = ampMacdCurr - ampSigCurr
+
+f_amp_mtf_macd(_f, _s, _sig) =>
+    _fastEma = ta.ema(close, _f)
+    _slowEma = ta.ema(close, _s)
+    _macdVal = _fastEma - _slowEma
+    _signalVal = ta.ema(_macdVal, _sig)
+    _histVal = _macdVal - _signalVal
+    // Use previous HTF value to keep the higher-timeframe confirmation non-repainting.
+    [_macdVal[1], _signalVal[1], _histVal[1]]
+
+[ampMacdConfirmTf, ampSigConfirmTf, ampHistConfirmTf] = request.security(syminfo.tickerid, ampConfirmTf, f_amp_mtf_macd(ampFastLen, ampSlowLen, ampSignalLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+[ampMacdRegimeTf, ampSigRegimeTf, ampHistRegimeTf] = request.security(syminfo.tickerid, ampRegimeTf, f_amp_mtf_macd(ampFastLen, ampSlowLen, ampSignalLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+ampVolSma = ta.sma(volume, 20)
+ampRvol = volume / math.max(ampVolSma, 1.0)
+ampHistVel = ampHistCurr - ampHistCurr[1]
+ampHistAcc = ampHistVel - ampHistVel[1]
+
+// Divergence engine.
+ampPivotHigh = ta.pivothigh(high, ampPivotLegs, ampPivotLegs)
+ampPivotLow = ta.pivotlow(low, ampPivotLegs, ampPivotLegs)
+var float ampLastPivotLowPrice = na
+var float ampLastPivotLowMacd = na
+var float ampLastPivotHighPrice = na
+var float ampLastPivotHighMacd = na
+
+ampBullDiv = false
+ampBearDiv = false
+ampHiddenBullDiv = false
+ampHiddenBearDiv = false
+
+if not na(ampPivotLow)
+    if not na(ampLastPivotLowPrice) and not na(ampLastPivotLowMacd)
+        if low[ampPivotLegs] < ampLastPivotLowPrice and ampMacdCurr[ampPivotLegs] > ampLastPivotLowMacd
+            ampBullDiv := true
+        if low[ampPivotLegs] > ampLastPivotLowPrice and ampMacdCurr[ampPivotLegs] < ampLastPivotLowMacd
+            ampHiddenBullDiv := true
+    ampLastPivotLowPrice := low[ampPivotLegs]
+    ampLastPivotLowMacd := ampMacdCurr[ampPivotLegs]
+
+if not na(ampPivotHigh)
+    if not na(ampLastPivotHighPrice) and not na(ampLastPivotHighMacd)
+        if high[ampPivotLegs] > ampLastPivotHighPrice and ampMacdCurr[ampPivotLegs] < ampLastPivotHighMacd
+            ampBearDiv := true
+        if high[ampPivotLegs] < ampLastPivotHighPrice and ampMacdCurr[ampPivotLegs] > ampLastPivotHighMacd
+            ampHiddenBearDiv := true
+    ampLastPivotHighPrice := high[ampPivotLegs]
+    ampLastPivotHighMacd := ampMacdCurr[ampPivotLegs]
+
+f_amp_calc_scores() =>
+    int _bull = 0
+    int _bear = 0
+
+    // 1. MACD momentum and histogram acceleration.
+    if ampMacdCurr > ampSigCurr
+        _bull += 15
+        if ampHistAcc > 0
+            _bull += 5
+    else
+        _bear += 15
+        if ampHistAcc < 0
+            _bear += 5
+
+    // 2. Trend and EMA alignment using the existing JungleeFrogs EMA 50 / EMA 200.
+    if close > ema200 and ema50 > ema200
+        _bull += 20
+    else if close < ema200 and ema50 < ema200
+        _bear += 20
+
+    // 3. Multi-timeframe MACD confirmation.
+    if ampMacdConfirmTf > ampSigConfirmTf and ampMacdRegimeTf > ampSigRegimeTf
+        _bull += 20
+    else if ampMacdConfirmTf < ampSigConfirmTf and ampMacdRegimeTf < ampSigRegimeTf
+        _bear += 20
+
+    // 4. ADX/DMI trend strength using the existing JungleeFrogs ADX/DMI engine.
+    if adxVal > adxTrendLevel
+        if diPlus > diMinus
+            _bull += 15
+        else
+            _bear += 15
+
+    // 5. Volume confirmation.
+    if ampRvol > 1.2
+        if close > open
+            _bull += 10
+        else
+            _bear += 10
+
+    // 6. Divergence boost.
+    if ampBullDiv or ampHiddenBullDiv
+        _bull += 15
+    if ampBearDiv or ampHiddenBearDiv
+        _bear += 15
+
+    [math.min(_bull, 100), math.min(_bear, 100)]
+
+[ampBullScore, ampBearScore] = f_amp_calc_scores()
+
+var int ampLastSignalBar = na
+ampCanSignal = na(ampLastSignalBar) or bar_index - ampLastSignalBar >= ampCooldownBars
+ampBullHasEdge = not ampUseStrictEdge or ampBullScore > ampBearScore
+ampBearHasEdge = not ampUseStrictEdge or ampBearScore > ampBullScore
+
+// Confirmed AMP signals fire after full threshold confirmation.
+ampStrongBuySignal = showAmpMacdPredictor and ampCanSignal and ampBullHasEdge and ampBullScore >= ampStrongTh
+ampBuySignal = showAmpMacdPredictor and ampCanSignal and ampBullHasEdge and ampBullScore >= ampSignalTh and ampBullScore < ampStrongTh
+ampStrongSellSignal = showAmpMacdPredictor and ampCanSignal and ampBearHasEdge and ampBearScore >= ampStrongTh
+ampSellSignal = showAmpMacdPredictor and ampCanSignal and ampBearHasEdge and ampBearScore >= ampSignalTh and ampBearScore < ampStrongTh
+
+// EARLY AMP signals: predictive one-candle-advance warnings.
+// They are intentionally faster than confirmed AMP BUY/SELL, so they can appear on the running candle
+// before the normal MACD cross/score confirmation. Treat them as "get ready" signals.
+ampMacdGap = ampMacdCurr - ampSigCurr
+ampMacdGapAbs = math.abs(ampMacdGap)
+ampMacdGapLimit = math.max(atrVal * ampEarlyMacdGapAtr, syminfo.mintick)
+ampBullLeadScoreReady = ampBullScore >= math.max(0, ampSignalTh - ampEarlyScoreBuffer) and ampBullScore >= ampBearScore
+ampBearLeadScoreReady = ampBearScore >= math.max(0, ampSignalTh - ampEarlyScoreBuffer) and ampBearScore >= ampBullScore
+ampBullMomentumEarly = ampMacdGap < 0 and ampMacdGap > ampMacdGap[1] and ampHistCurr > ampHistCurr[1] and ampHistVel > 0 and ampMacdGapAbs <= ampMacdGapLimit
+ampBearMomentumEarly = ampMacdGap > 0 and ampMacdGap < ampMacdGap[1] and ampHistCurr < ampHistCurr[1] and ampHistVel < 0 and ampMacdGapAbs <= ampMacdGapLimit
+ampBullTrendEarlyOk = not ampEarlyNeedTrendBias or close >= ema50 or diPlus >= diMinus
+ampBearTrendEarlyOk = not ampEarlyNeedTrendBias or close <= ema50 or diMinus >= diPlus
+ampEarlyBuySignal = showAmpMacdPredictor and ampShowEarlySignals and ampCanSignal and not ampStrongBuySignal and not ampBuySignal and ampBullHasEdge and ampBullLeadScoreReady and ampBullMomentumEarly and ampBullTrendEarlyOk
+ampEarlySellSignal = showAmpMacdPredictor and ampShowEarlySignals and ampCanSignal and not ampStrongSellSignal and not ampSellSignal and ampBearHasEdge and ampBearLeadScoreReady and ampBearMomentumEarly and ampBearTrendEarlyOk
+
+if ampStrongBuySignal or ampBuySignal or ampStrongSellSignal or ampSellSignal
+    ampLastSignalBar := bar_index
+
+ampFinalDecision =
+     ampStrongBuySignal ? "STRONG BUY" :
+     ampBuySignal ? "BUY" :
+     ampStrongSellSignal ? "STRONG SELL" :
+     ampSellSignal ? "SELL" :
+     ampEarlyBuySignal ? "EARLY BUY" :
+     ampEarlySellSignal ? "EARLY SELL" :
+     "WAIT"
+
+ampEntryPrice = close
+ampLongSL = ampEntryPrice - atrVal * ampSlAtrMult
+ampShortSL = ampEntryPrice + atrVal * ampSlAtrMult
+ampLongT1 = ampEntryPrice + atrVal * ampSlAtrMult
+ampLongT2 = ampEntryPrice + atrVal * ampSlAtrMult * 2.0
+ampShortT1 = ampEntryPrice - atrVal * ampSlAtrMult
+ampShortT2 = ampEntryPrice - atrVal * ampSlAtrMult * 2.0
+ampRegimeText = close > ema200 ? "BULLISH" : close < ema200 ? "BEARISH" : "NEUTRAL"
+ampMtfText = ampMacdRegimeTf > ampSigRegimeTf ? ampRegimeTf + " BULL" : ampMacdRegimeTf < ampSigRegimeTf ? ampRegimeTf + " BEAR" : ampRegimeTf + " FLAT"
+ampConfirmBull = ampMacdConfirmTf > ampSigConfirmTf
+ampConfirmBear = ampMacdConfirmTf < ampSigConfirmTf
+ampRegimeBull = ampMacdRegimeTf > ampSigRegimeTf
+ampRegimeBear = ampMacdRegimeTf < ampSigRegimeTf
+ampMtfAlignedBull = ampConfirmBull and ampRegimeBull
+ampMtfAlignedBear = ampConfirmBear and ampRegimeBear
+ampDivText = ampBullDiv ? "BULL DIV" : ampHiddenBullDiv ? "HIDDEN BULL" : ampBearDiv ? "BEAR DIV" : ampHiddenBearDiv ? "HIDDEN BEAR" : "NONE"
+
+// AMP trader action recommendation.
+// ENTER means the MACD predictor has already crossed the actionable threshold.
+// NEAR ENTER means score/momentum is close but not fully confirmed yet.
+// EXIT / NEAR EXIT are directional warnings for an existing opposite-side trade.
+ampMacdBullCross = ta.crossover(ampMacdCurr, ampSigCurr)
+ampMacdBearCross = ta.crossunder(ampMacdCurr, ampSigCurr)
+ampBullNearThreshold = ampBullScore >= math.max(0, ampSignalTh - 10) and ampBullScore < ampSignalTh and ampBullScore > ampBearScore
+ampBearNearThreshold = ampBearScore >= math.max(0, ampSignalTh - 10) and ampBearScore < ampSignalTh and ampBearScore > ampBullScore
+ampBullWeakening = close > ema200 and (ampMacdBearCross or (ampHistCurr < ampHistCurr[1] and ampBearScore >= ampBullScore - 5))
+ampBearWeakening = close < ema200 and (ampMacdBullCross or (ampHistCurr > ampHistCurr[1] and ampBullScore >= ampBearScore - 5))
+ampNearExitLong = close > ema200 and not ampMacdBearCross and ampHistCurr < ampHistCurr[1] and ampBearScore >= math.max(0, ampBullScore - 15)
+ampNearExitShort = close < ema200 and not ampMacdBullCross and ampHistCurr > ampHistCurr[1] and ampBullScore >= math.max(0, ampBearScore - 15)
+ampTradeAction =
+     ampStrongBuySignal or ampBuySignal ? "ENTER BUY" :
+     ampStrongSellSignal or ampSellSignal ? "ENTER SELL" :
+     ampEarlyBuySignal ? "EARLY ENTER BUY" :
+     ampEarlySellSignal ? "EARLY ENTER SELL" :
+     ampBullWeakening ? "EXIT LONG" :
+     ampBearWeakening ? "EXIT SHORT" :
+     ampNearExitLong ? "NEAR EXIT LONG" :
+     ampNearExitShort ? "NEAR EXIT SHORT" :
+     ampBullNearThreshold ? "NEAR ENTER BUY" :
+     ampBearNearThreshold ? "NEAR ENTER SELL" :
+     "WAIT"
+ampTradeActionColor =
+     str.contains(ampTradeAction, "ENTER BUY") or str.contains(ampTradeAction, "NEAR ENTER BUY") ? color.lime :
+     str.contains(ampTradeAction, "ENTER SELL") or str.contains(ampTradeAction, "NEAR ENTER SELL") ? color.red :
+     str.contains(ampTradeAction, "EXIT") ? color.orange :
+     color.yellow
+
+// Quick risk indication for faster trader decision-making.
+// This is intentionally shorter than Action: it tells the trader what to do with risk now.
+ampScoreEdge = math.abs(ampBullScore - ampBearScore)
+ampQuickRiskText =
+     ampTradeAction == "EXIT LONG" or ampTradeAction == "EXIT SHORT" ? "FAST EXIT" :
+     ampTradeAction == "NEAR EXIT LONG" or ampTradeAction == "NEAR EXIT SHORT" ? "TIGHT SL / PART EXIT" :
+     ampTradeAction == "ENTER BUY" or ampTradeAction == "ENTER SELL" ? "ENTRY OK" :
+     ampTradeAction == "EARLY ENTER BUY" or ampTradeAction == "EARLY ENTER SELL" ? "EARLY WATCH" :
+     ampTradeAction == "NEAR ENTER BUY" or ampTradeAction == "NEAR ENTER SELL" ? "WAIT TRIGGER" :
+     ampBullScore > ampBearScore and ampBullScore >= math.max(0, ampSignalTh - 15) ? "BULL WATCH" :
+     ampBearScore > ampBullScore and ampBearScore >= math.max(0, ampSignalTh - 15) ? "BEAR WATCH" :
+     "NO TRADE"
+ampQuickRiskColor =
+     ampQuickRiskText == "FAST EXIT" ? color.red :
+     ampQuickRiskText == "TIGHT SL / PART EXIT" ? color.orange :
+     ampQuickRiskText == "ENTRY OK" ? color.lime :
+     ampQuickRiskText == "WAIT TRIGGER" ? color.yellow :
+     ampQuickRiskText == "BULL WATCH" ? color.lime :
+     ampQuickRiskText == "BEAR WATCH" ? color.red :
+     color.gray
+
+//=========================================================
+// PIVOTS - DROPDOWN TIMEFRAME LEVELS
+//=========================================================
+// Restored: Pivot / R1 R2 R3 / S1 S2 S3 use selectable timeframe levels.
+// This keeps the levels straight/horizontal for the selected timeframe.
+// Example: D = daily levels on intraday chart, 60 = hourly levels.
+[ph, pl, pc] = request.security(syminfo.tickerid, pivotTf, [high[1], low[1], close[1]], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+
+pivot = (ph + pl + pc) / 3.0
+r1 = 2.0 * pivot - pl
+s1 = 2.0 * pivot - ph
+r2 = pivot + (ph - pl)
+s2 = pivot - (ph - pl)
+r3 = ph + 2.0 * (pivot - pl)
+s3 = pl - 2.0 * (ph - pivot)
+
+//=========================================================
+// EMA 50 / EMA 200 CROSSES
+//=========================================================
+// Fixed: Golden / Death Cross now uses EMA 50 vs EMA 200 and is plotted on the exact crossing candle.
+goldenCross = ta.crossover(ema50, ema200)
+deathCross  = ta.crossunder(ema50, ema200)
+
+//=========================================================
+// OPTION PREMIUMS
+//=========================================================
+// Auto root helper for common NSE index symbols and normal equity charts.
+// If the chart is already an option symbol and the root cannot be inferred cleanly,
+// keep Option Root manual or set it explicitly in settings.
+f_auto_option_root() =>
+    _ticker = syminfo.ticker
+    str.contains(_ticker, "BANKNIFTY") ? "BANKNIFTY" :
+     str.contains(_ticker, "FINNIFTY") ? "FINNIFTY" :
+     str.contains(_ticker, "MIDCPNIFTY") ? "MIDCPNIFTY" :
+     str.contains(_ticker, "NIFTY") ? "NIFTY" :
+     _ticker
+
+optionRootToUse = optionRootAutoMode and (str.length(optionRoot) == 0 or optionRoot == "AUTO") ? f_auto_option_root() : optionRoot
+
+atmStrike = math.round(close / strikeStep) * strikeStep
+atmStrikeInt = int(atmStrike)
+atmStrikeText = str.tostring(atmStrikeInt)
+
+// Immediate expiry helper. Default is Tuesday because NSE index derivatives moved to Tuesday expiry from Sep 2025.
+f_pad2(_num) =>
+    _num < 10 ? "0" + str.tostring(_num) : str.tostring(_num)
+
+f_targetDow(_dayNo) =>
+    _dayNo == 1 ? dayofweek.monday :
+     _dayNo == 2 ? dayofweek.tuesday :
+     _dayNo == 3 ? dayofweek.wednesday :
+     _dayNo == 4 ? dayofweek.thursday :
+     dayofweek.friday
+
+indiaTz = "Asia/Kolkata"
+currentDow = dayofweek(timenow, indiaTz)
+targetDow = f_targetDow(immediateExpiryDayNo)
+daysUntilExpiryRaw = targetDow >= currentDow ? targetDow - currentDow : targetDow - currentDow + 7
+currentHourIST = hour(timenow, indiaTz)
+currentMinuteIST = minute(timenow, indiaTz)
+afterExpiryCutoff = currentHourIST > expiryCutoffHourIST or (currentHourIST == expiryCutoffHourIST and currentMinuteIST >= expiryCutoffMinuteIST)
+daysUntilExpiry = daysUntilExpiryRaw == 0 and afterExpiryCutoff ? 7 : daysUntilExpiryRaw
+adjustedDaysUntilExpiry = daysUntilExpiry - expiryHolidayShiftBackDays
+expiryTs = timestamp(indiaTz, year(timenow, indiaTz), month(timenow, indiaTz), dayofmonth(timenow, indiaTz) + adjustedDaysUntilExpiry, 0, 0, 0)
+expiryYearYY = year(expiryTs, indiaTz) % 100
+autoImmediateExpiryYYMMDD = f_pad2(expiryYearYY) + f_pad2(month(expiryTs, indiaTz)) + f_pad2(dayofmonth(expiryTs, indiaTz))
+expiryYYMMDDToUse = useImmediateExpiry ? autoImmediateExpiryYYMMDD : optionExpiryYYMMDD
+expiryModeText = useImmediateExpiry ? "IMMEDIATE " + immediateExpiryWeekdayText : "MANUAL"
+
+// TradingView NSE option ticker format example:
+// NSE:NIFTY240314C22450 / NSE:NIFTY240314P22450
+manualCeReady = str.length(atmCeSymbol) > 0
+manualPeReady = str.length(atmPeSymbol) > 0
+manualCallOiReady = str.length(callOiSymbol) > 0
+manualPutOiReady  = str.length(putOiSymbol) > 0
+autoOptReady = autoBuildAtmSymbols and str.length(optionExchange) > 0 and str.length(optionRootToUse) > 0 and str.length(expiryYYMMDDToUse) == 6
+autoOiPressureReady = autoBuildCallPutOiPressure and str.length(optionExchange) > 0 and str.length(optionRootToUse) > 0 and str.length(expiryYYMMDDToUse) == 6
+
+autoCeSymbol = optionExchange + ":" + optionRootToUse + expiryYYMMDDToUse + "C" + atmStrikeText
+autoPeSymbol = optionExchange + ":" + optionRootToUse + expiryYYMMDDToUse + "P" + atmStrikeText
+
+// Auto OI pressure rule requested:
+// CALL OI = ATM strike minus offset points, PUT OI = ATM strike plus offset points.
+// Example: ATM 24450, offset 200 => CALL OI 24250CE_OI and PUT OI 24650PE_OI.
+autoCallOiPressureStrike = math.max(atmStrike - oiPressureOffsetPoints, strikeStep)
+autoPutOiPressureStrike = atmStrike + oiPressureOffsetPoints
+autoCallOiPressureStrikeText = str.tostring(int(autoCallOiPressureStrike))
+autoPutOiPressureStrikeText = str.tostring(int(autoPutOiPressureStrike))
+autoCallOiPressureOptionSymbol = optionExchange + ":" + optionRootToUse + expiryYYMMDDToUse + "C" + autoCallOiPressureStrikeText
+autoPutOiPressureOptionSymbol = optionExchange + ":" + optionRootToUse + expiryYYMMDDToUse + "P" + autoPutOiPressureStrikeText
+
+ceSymbolToUse = manualCeReady ? atmCeSymbol : autoOptReady ? autoCeSymbol : ""
+peSymbolToUse = manualPeReady ? atmPeSymbol : autoOptReady ? autoPeSymbol : ""
+
+// IMPORTANT FIX FOR REALTIME REQUEST CONTEXT:
+// Auto-built ATM symbols can change when ATM strike/expiry changes. TradingView does not allow
+// a brand-new dynamic request.security() context to appear first on a realtime bar.
+// So auto CE/PE symbols are LOCKED on the last confirmed historical bar and then reused on realtime bars.
+// Manual symbols are fixed and can still be requested normally across all bars.
+autoLockBar = barstate.islastconfirmedhistory or (barstate.islast and not barstate.isrealtime)
+
+var string lockedAutoCeSymbol = ""
+var string lockedAutoPeSymbol = ""
+var string lockedAutoCallOiPressureOptionSymbol = ""
+var string lockedAutoPutOiPressureOptionSymbol = ""
+
+if autoLockBar
+    lockedAutoCeSymbol := not manualCeReady and str.length(ceSymbolToUse) > 0 ? ceSymbolToUse : lockedAutoCeSymbol
+    lockedAutoPeSymbol := not manualPeReady and str.length(peSymbolToUse) > 0 ? peSymbolToUse : lockedAutoPeSymbol
+    lockedAutoCallOiPressureOptionSymbol := not manualCallOiReady and autoOiPressureReady ? autoCallOiPressureOptionSymbol : lockedAutoCallOiPressureOptionSymbol
+    lockedAutoPutOiPressureOptionSymbol := not manualPutOiReady and autoOiPressureReady ? autoPutOiPressureOptionSymbol : lockedAutoPutOiPressureOptionSymbol
+
+float ceAtmManual = na
+float peAtmManual = na
+float ceAtmAuto = na
+float peAtmAuto = na
+
+if manualCeReady
+    ceAtmManual := request.security(atmCeSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+if manualPeReady
+    peAtmManual := request.security(atmPeSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+
+autoCeRequestReady = not manualCeReady and str.length(lockedAutoCeSymbol) > 0 and (autoLockBar or barstate.isrealtime)
+autoPeRequestReady = not manualPeReady and str.length(lockedAutoPeSymbol) > 0 and (autoLockBar or barstate.isrealtime)
+
+if autoCeRequestReady
+    ceAtmAuto := request.security(lockedAutoCeSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+if autoPeRequestReady
+    peAtmAuto := request.security(lockedAutoPeSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+
+ceAtm = manualCeReady ? ceAtmManual : ceAtmAuto
+peAtm = manualPeReady ? peAtmManual : peAtmAuto
+
+straddleValue = na(ceAtm) or na(peAtm) ? na : ceAtm + peAtm
+estimatedStrangle = na(straddleValue) ? na : straddleValue * strangleFactor
+
+//=========================================================
+// CALL / PUT OI FEEDS FOR MINI BARS
+//=========================================================
+// Priority 1: Manual OI symbols, where the close value represents OI.
+// Priority 2: TradingView OI service symbol using the LOCKED auto option symbol + "_OI".
+// This avoids creating a new OI request context first on realtime bars.
+float ceOiManual = na
+float peOiManual = na
+if manualCallOiReady
+    ceOiManual := request.security(callOiSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+if manualPutOiReady
+    peOiManual := request.security(putOiSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+
+// OI source priority:
+// 1) Manual Call/Put OI input symbols when provided.
+// 2) Auto pressure OI symbols: CALL strike = ATM - offset, PUT strike = ATM + offset.
+// 3) Fallback to ATM CE/PE _OI.
+ceOiAutoBaseSymbol = autoBuildCallPutOiPressure and str.length(lockedAutoCallOiPressureOptionSymbol) > 0 ? lockedAutoCallOiPressureOptionSymbol : lockedAutoCeSymbol
+peOiAutoBaseSymbol = autoBuildCallPutOiPressure and str.length(lockedAutoPutOiPressureOptionSymbol) > 0 ? lockedAutoPutOiPressureOptionSymbol : lockedAutoPeSymbol
+ceOiAutoSymbol = str.length(ceOiAutoBaseSymbol) > 0 ? ceOiAutoBaseSymbol + "_OI" : ""
+peOiAutoSymbol = str.length(peOiAutoBaseSymbol) > 0 ? peOiAutoBaseSymbol + "_OI" : ""
+
+float ceOiAuto = na
+float peOiAuto = na
+
+autoCeOiRequestReady = not manualCallOiReady and str.length(ceOiAutoSymbol) > 0 and (autoLockBar or barstate.isrealtime)
+autoPeOiRequestReady = not manualPutOiReady and str.length(peOiAutoSymbol) > 0 and (autoLockBar or barstate.isrealtime)
+
+if autoCeOiRequestReady
+    ceOiAuto := request.security(ceOiAutoSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+if autoPeOiRequestReady
+    peOiAuto := request.security(peOiAutoSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+
+ceOi = not na(ceOiManual) ? ceOiManual : ceOiAuto
+peOi = not na(peOiManual) ? peOiManual : peOiAuto
+ceOiChange = na(ceOi) or na(ceOi[1]) ? na : ceOi - ceOi[1]
+peOiChange = na(peOi) or na(peOi[1]) ? na : peOi - peOi[1]
+
+maxCeOi = ta.highest(nz(ceOi, 0), oiBarLookback)
+maxPeOi = ta.highest(nz(peOi, 0), oiBarLookback)
+maxOiForBars = math.max(math.max(maxCeOi, maxPeOi), 1)
+
+maxCeOiDelta = ta.highest(math.abs(nz(ceOiChange, 0)), oiBarLookback)
+maxPeOiDelta = ta.highest(math.abs(nz(peOiChange, 0)), oiBarLookback)
+maxOiDeltaForBars = math.max(math.max(maxCeOiDelta, maxPeOiDelta), 1)
+
+ceOiSourceText = manualCallOiReady ? "MANUAL" : str.length(ceOiAutoSymbol) > 0 ? (autoBuildCallPutOiPressure ? "AUTO CALL-" + str.tostring(oiPressureOffsetPoints) : "AUTO ATM") : "NO OI FEED"
+peOiSourceText = manualPutOiReady ? "MANUAL" : str.length(peOiAutoSymbol) > 0 ? (autoBuildCallPutOiPressure ? "AUTO PUT+" + str.tostring(oiPressureOffsetPoints) : "AUTO ATM") : "NO OI FEED"
+
+autoOptionText = (str.length(lockedAutoCeSymbol) > 0 or str.length(lockedAutoPeSymbol) > 0) ? "AUTO LOCKED " + expiryModeText + " " + expiryYYMMDDToUse : "AUTO WAITING " + expiryModeText + " " + expiryYYMMDDToUse
+optionSourceText = manualCeReady and manualPeReady ? "MANUAL SYMBOLS" : autoOptReady ? autoOptionText : "SET SYMBOL"
+
+var label optionLabel = na
+if barstate.islast
+    if not na(optionLabel)
+        label.delete(optionLabel)
+    if showOptionStats
+        optionHasPremiumData = not na(ceAtm) or not na(peAtm)
+        txt = "ROOT: " + optionRootToUse + "\nATM STRIKE: " + atmStrikeText + "\nEXPIRY: " + expiryYYMMDDToUse
+        if autoBuildCallPutOiPressure
+            txt := txt + "\nAUTO OI: C" + autoCallOiPressureStrikeText + " / P" + autoPutOiPressureStrikeText
+        if not na(ceAtm)
+            txt := txt + "\nATM CE: " + str.tostring(ceAtm, format.mintick)
+        if not na(peAtm)
+            txt := txt + "\nATM PE: " + str.tostring(peAtm, format.mintick)
+        if not na(straddleValue)
+            txt := txt + "\nSTRADDLE: " + str.tostring(straddleValue, format.mintick)
+        if not na(estimatedStrangle)
+            txt := txt + "\nEST. STRANGLE: " + str.tostring(estimatedStrangle, format.mintick)
+        if not optionHasPremiumData
+            txt := txt + "\nSET EXPIRY/SYMBOL TO SHOW CE/PE"
+        txt := txt + "\nOPT SRC: " + optionSourceText
+        optionLabel := label.new(bar_index, high + atrVal * 2.0, txt, style=label.style_label_left, color=color.black, textcolor=color.white, size=size.normal)
+
+//=========================================================
+// MAJOR ORDER BLOCKS USING BOS + 5m PIVOT FALLBACK
+//=========================================================
+// Zone labels now store the source candle's own Volume/OI at creation time.
+// They do not reuse the latest candle volume.
+
+// Optional zone OI source.
+// IMPORTANT FIX:
+// Supply/Resistance must use CALL/CE OI.
+// Demand/Support must use PUT/PE OI.
+// Earlier logic used combined CE+PE OI for both zones, so Supply and Demand showed the same OI.
+oiNow = str.length(oiSymbol) > 0 ? request.security(oiSymbol, timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true) : na
+supplyZoneOiNow = not na(ceOi) ? ceOi : oiNow
+// Red Supply box = Call/CE OI first, generic OI only as fallback.
+demandZoneOiNow = not na(peOi) ? peOi : oiNow
+// Green Demand box = Put/PE OI first, generic OI only as fallback.
+
+pHi = ta.pivothigh(high, 3, 3)
+pLo = ta.pivotlow(low, 3, 3)
+
+var float lastSwingHigh = na
+var float lastSwingLow  = na
+
+if not na(pHi)
+    lastSwingHigh := pHi
+if not na(pLo)
+    lastSwingLow := pLo
+
+bullBOS = not na(lastSwingHigh) and close > lastSwingHigh and close[1] <= lastSwingHigh
+bearBOS = not na(lastSwingLow) and close < lastSwingLow and close[1] >= lastSwingLow
+
+// Pivot fallback creates visible BUY/SELL zones on lower timeframes such as 5m
+// even when BOS has not yet confirmed.
+pivotDemandSignal = usePivotFallbackZones and not na(pLo)
+pivotSupplySignal = usePivotFallbackZones and not na(pHi)
+
+var float demandHigh = na
+var float demandLow  = na
+var int demandBorn   = na
+var float demandScoreStored = na
+var float demandVolumeStored = na
+var float demandOiStored = na
+
+var float supplyHigh = na
+var float supplyLow  = na
+var int supplyBorn   = na
+var float supplyScoreStored = na
+var float supplyVolumeStored = na
+var float supplyOiStored = na
+
+// Massive STR change state. These labels are intentionally not deleted, so the shock marker stays on chart history.
+var int lastDemandStrShockBar = na
+var int lastSupplyStrShockBar = na
+var float demandLastShockOldScore = na
+var float demandLastShockNewScore = na
+var float demandLastShockPct = na
+var int demandLastShockBorn = na
+var float supplyLastShockOldScore = na
+var float supplyLastShockNewScore = na
+var float supplyLastShockPct = na
+var int supplyLastShockBorn = na
+
+float demandScoreBeforeUpdate = demandScoreStored
+float supplyScoreBeforeUpdate = supplyScoreStored
+bool demandStrShock = false
+bool supplyStrShock = false
+float demandStrShockOld = na
+float demandStrShockNew = na
+float demandStrShockPctVal = na
+float demandStrShockDelta = na
+float supplyStrShockOld = na
+float supplyStrShockNew = na
+float supplyStrShockPctVal = na
+float supplyStrShockDelta = na
+
+// Demand zone: strongest bearish candle before bullish BOS.
+if bullBOS
+    float bestBody = 0.0
+    float bestHigh = na
+    float bestLow  = na
+    float bestScore = na
+    float bestVol = na
+    float bestOi = na
+    int bestOffset = na
+    for i = 1 to obLookback
+        if close[i] < open[i]
+            body = math.abs(open[i] - close[i])
+            score = f_safe_zone_score(volume[i], volSma[i], body, atrVal[i])
+            if body > bestBody
+                bestBody := body
+                bestHigh := high[i]
+                bestLow  := low[i]
+                bestScore := score
+                bestVol := f_safe_zone_volume(volume[i], volSma[i], volume)
+                bestOi := demandZoneOiNow[i]
+                bestOffset := i
+    if not na(bestOffset)
+        demandHigh := bestHigh
+        demandLow  := bestLow
+        demandBorn := bar_index - bestOffset
+        demandScoreStored := bestScore
+        demandVolumeStored := bestVol
+        demandOiStored := bestOi
+        demandStrShockPctVal := f_str_change_pct(demandScoreStored, demandScoreBeforeUpdate)
+        demandStrShockDelta := f_str_change_signed(demandScoreStored, demandScoreBeforeUpdate)
+        demandStrShock := showStrShock and barstate.isconfirmed and not na(demandScoreBeforeUpdate) and not na(demandScoreStored) and math.abs(demandStrShockDelta) >= strShockAbs and demandStrShockPctVal >= strShockPct and (na(lastDemandStrShockBar) or bar_index - lastDemandStrShockBar >= strShockCooldownBars)
+        if demandStrShock
+            demandStrShockOld := demandScoreBeforeUpdate
+            demandStrShockNew := demandScoreStored
+            demandLastShockOldScore := demandStrShockOld
+            demandLastShockNewScore := demandStrShockNew
+            demandLastShockPct := demandStrShockPctVal
+            demandLastShockBorn := demandBorn
+            lastDemandStrShockBar := bar_index
+else if pivotDemandSignal
+    int demandPivotOffset = 3
+    demandHigh := high[demandPivotOffset]
+    demandLow  := low[demandPivotOffset]
+    demandBorn := bar_index - demandPivotOffset
+    demandScoreStored := f_safe_zone_score(volume[demandPivotOffset], volSma[demandPivotOffset], math.abs(open[demandPivotOffset] - close[demandPivotOffset]), atrVal[demandPivotOffset])
+    demandVolumeStored := f_safe_zone_volume(volume[demandPivotOffset], volSma[demandPivotOffset], volume)
+    demandOiStored := demandZoneOiNow[demandPivotOffset]
+    demandStrShockPctVal := f_str_change_pct(demandScoreStored, demandScoreBeforeUpdate)
+    demandStrShockDelta := f_str_change_signed(demandScoreStored, demandScoreBeforeUpdate)
+    demandStrShock := showStrShock and barstate.isconfirmed and not na(demandScoreBeforeUpdate) and not na(demandScoreStored) and math.abs(demandStrShockDelta) >= strShockAbs and demandStrShockPctVal >= strShockPct and (na(lastDemandStrShockBar) or bar_index - lastDemandStrShockBar >= strShockCooldownBars)
+    if demandStrShock
+        demandStrShockOld := demandScoreBeforeUpdate
+        demandStrShockNew := demandScoreStored
+        demandLastShockOldScore := demandStrShockOld
+        demandLastShockNewScore := demandStrShockNew
+        demandLastShockPct := demandStrShockPctVal
+        demandLastShockBorn := demandBorn
+        lastDemandStrShockBar := bar_index
+
+// Supply zone: strongest bullish candle before bearish BOS.
+if bearBOS
+    float bestBody2 = 0.0
+    float bestHigh2 = na
+    float bestLow2  = na
+    float bestScore2 = na
+    float bestVol2 = na
+    float bestOi2 = na
+    int bestOffset2 = na
+    for i = 1 to obLookback
+        if close[i] > open[i]
+            body2 = math.abs(open[i] - close[i])
+            score2 = f_safe_zone_score(volume[i], volSma[i], body2, atrVal[i])
+            if body2 > bestBody2
+                bestBody2 := body2
+                bestHigh2 := high[i]
+                bestLow2  := low[i]
+                bestScore2 := score2
+                bestVol2 := f_safe_zone_volume(volume[i], volSma[i], volume)
+                bestOi2 := supplyZoneOiNow[i]
+                bestOffset2 := i
+    if not na(bestOffset2)
+        supplyHigh := bestHigh2
+        supplyLow  := bestLow2
+        supplyBorn := bar_index - bestOffset2
+        supplyScoreStored := bestScore2
+        supplyVolumeStored := bestVol2
+        supplyOiStored := bestOi2
+        supplyStrShockPctVal := f_str_change_pct(supplyScoreStored, supplyScoreBeforeUpdate)
+        supplyStrShockDelta := f_str_change_signed(supplyScoreStored, supplyScoreBeforeUpdate)
+        supplyStrShock := showStrShock and barstate.isconfirmed and not na(supplyScoreBeforeUpdate) and not na(supplyScoreStored) and math.abs(supplyStrShockDelta) >= strShockAbs and supplyStrShockPctVal >= strShockPct and (na(lastSupplyStrShockBar) or bar_index - lastSupplyStrShockBar >= strShockCooldownBars)
+        if supplyStrShock
+            supplyStrShockOld := supplyScoreBeforeUpdate
+            supplyStrShockNew := supplyScoreStored
+            supplyLastShockOldScore := supplyStrShockOld
+            supplyLastShockNewScore := supplyStrShockNew
+            supplyLastShockPct := supplyStrShockPctVal
+            supplyLastShockBorn := supplyBorn
+            lastSupplyStrShockBar := bar_index
+else if pivotSupplySignal
+    int supplyPivotOffset = 3
+    supplyHigh := high[supplyPivotOffset]
+    supplyLow  := low[supplyPivotOffset]
+    supplyBorn := bar_index - supplyPivotOffset
+    supplyScoreStored := f_safe_zone_score(volume[supplyPivotOffset], volSma[supplyPivotOffset], math.abs(open[supplyPivotOffset] - close[supplyPivotOffset]), atrVal[supplyPivotOffset])
+    supplyVolumeStored := f_safe_zone_volume(volume[supplyPivotOffset], volSma[supplyPivotOffset], volume)
+    supplyOiStored := supplyZoneOiNow[supplyPivotOffset]
+    supplyStrShockPctVal := f_str_change_pct(supplyScoreStored, supplyScoreBeforeUpdate)
+    supplyStrShockDelta := f_str_change_signed(supplyScoreStored, supplyScoreBeforeUpdate)
+    supplyStrShock := showStrShock and barstate.isconfirmed and not na(supplyScoreBeforeUpdate) and not na(supplyScoreStored) and math.abs(supplyStrShockDelta) >= strShockAbs and supplyStrShockPctVal >= strShockPct and (na(lastSupplyStrShockBar) or bar_index - lastSupplyStrShockBar >= strShockCooldownBars)
+    if supplyStrShock
+        supplyStrShockOld := supplyScoreBeforeUpdate
+        supplyStrShockNew := supplyScoreStored
+        supplyLastShockOldScore := supplyStrShockOld
+        supplyLastShockNewScore := supplyStrShockNew
+        supplyLastShockPct := supplyStrShockPctVal
+        supplyLastShockBorn := supplyBorn
+        lastSupplyStrShockBar := bar_index
+
+demandActive = not na(demandBorn) and (bar_index - demandBorn <= obLifeBars)
+supplyActive = not na(supplyBorn) and (bar_index - supplyBorn <= obLifeBars)
+
+//=========================================================
+// BOXES + LABELS
+//=========================================================
+var box demandBox = na
+var box supplyBox = na
+var label demandLabel = na
+var label supplyLabel = na
+
+// Optimization: draw/delete visible Demand/Supply boxes only on the last chart bar.
+// Zone calculations still run on every bar for signals/alerts, but we avoid creating and
+// deleting boxes thousands of times during historical loading.
+if barstate.islast
+    if not na(demandBox)
+        box.delete(demandBox)
+    if not na(supplyBox)
+        box.delete(supplyBox)
+    if not na(demandLabel)
+        label.delete(demandLabel)
+    if not na(supplyLabel)
+        label.delete(supplyLabel)
+
+// Display-only anti-overlap protection.
+// The original zone values are kept for logic/alerts, but the drawn boxes are shifted apart
+// whenever Supply and Demand are overlapping or too close.
+showDemandBoxNow = showOrderBlocks and demandActive and not na(demandHigh) and not na(demandLow)
+showSupplyBoxNow = showOrderBlocks and supplyActive and not na(supplyHigh) and not na(supplyLow)
+
+displayDemandHigh = demandHigh
+displayDemandLow  = demandLow
+displaySupplyHigh = supplyHigh
+displaySupplyLow  = supplyLow
+
+minZoneGap = math.max(atrVal * zoneMinGapATR, syminfo.mintick * 10)
+
+// Demand must always remain below Supply visually.
+// If demand top touches/crosses supply bottom, move demand down and supply up equally.
+if showDemandBoxNow and showSupplyBoxNow and displayDemandHigh + minZoneGap > displaySupplyLow
+    overlapFixMove = (displayDemandHigh + minZoneGap - displaySupplyLow) / 2.0
+    displayDemandHigh -= overlapFixMove
+    displayDemandLow  -= overlapFixMove
+    displaySupplyHigh += overlapFixMove
+    displaySupplyLow  += overlapFixMove
+
+// Safety guard to prevent inverted very small boxes after shifting.
+displayDemandHigh := math.max(displayDemandHigh, displayDemandLow + syminfo.mintick)
+displaySupplyHigh := math.max(displaySupplyHigh, displaySupplyLow + syminfo.mintick)
+
+if barstate.islast
+    if showDemandBoxNow
+        demandBox := box.new(left=demandBorn, top=displayDemandHigh, right=bar_index + 1, bottom=displayDemandLow, xloc=xloc.bar_index, bgcolor=colDemandFill, border_color=colDemandBorder)
+        demandVolForLabel = f_safe_zone_volume(demandVolumeStored, volume, volSma)
+        demandScoreForLabel = na(demandScoreStored) or demandScoreStored <= 0 ? f_safe_zone_score(volume, volSma, math.abs(open - close), atrVal) : demandScoreStored
+        demandVolText = "\nVOL: " + str.tostring(demandVolForLabel, format.volume)
+        demandOiText = na(demandOiStored) ? "" : "\nPUT OI: " + str.tostring(demandOiStored, format.volume)
+        demandStrText = "\nSTR: " + str.tostring(demandScoreForLabel, "#.0")
+        if showOldStrInZoneLabel and demandLastShockBorn == demandBorn and not na(demandLastShockOldScore) and not na(demandLastShockNewScore)
+            demandStrText := "\nSTR: " + str.tostring(demandLastShockNewScore, "#.0") + " | OLD: " + str.tostring(demandLastShockOldScore, "#.0") + " | Δ " + str.tostring(demandLastShockPct, "#.0") + "%"
+        demandLabel := label.new(bar_index, displayDemandHigh, "DEMAND" + demandVolText + demandOiText + demandStrText, style=label.style_label_left, color=colDemandBorder, textcolor=color.white, size=size.small)
+
+    if showSupplyBoxNow
+        supplyBox := box.new(left=supplyBorn, top=displaySupplyHigh, right=bar_index + 1, bottom=displaySupplyLow, xloc=xloc.bar_index, bgcolor=colSupplyFill, border_color=colSupplyBorder)
+        supplyVolForLabel = f_safe_zone_volume(supplyVolumeStored, volume, volSma)
+        supplyScoreForLabel = na(supplyScoreStored) or supplyScoreStored <= 0 ? f_safe_zone_score(volume, volSma, math.abs(open - close), atrVal) : supplyScoreStored
+        supplyVolText = "\nVOL: " + str.tostring(supplyVolForLabel, format.volume)
+        supplyOiText = na(supplyOiStored) ? "" : "\nCALL OI: " + str.tostring(supplyOiStored, format.volume)
+        supplyStrText = "\nSTR: " + str.tostring(supplyScoreForLabel, "#.0")
+        if showOldStrInZoneLabel and supplyLastShockBorn == supplyBorn and not na(supplyLastShockOldScore) and not na(supplyLastShockNewScore)
+            supplyStrText := "\nSTR: " + str.tostring(supplyLastShockNewScore, "#.0") + " | OLD: " + str.tostring(supplyLastShockOldScore, "#.0") + " | Δ " + str.tostring(supplyLastShockPct, "#.0") + "%"
+        supplyLabel := label.new(bar_index, displaySupplyHigh, "SUPPLY" + supplyVolText + supplyOiText + supplyStrText, style=label.style_label_left, color=colSupplyBorder, textcolor=color.white, size=size.small)
+
+// STR shock SOUND-ONLY alert calls.
+// No visual BUZZ labels are drawn. To get a real 10-second continuous beep/buzz,
+// create a TradingView alert on "Any alert() function call" and set the alert sound/duration
+// in TradingView's alert dialog. Pine can trigger the alert but cannot force device sound duration.
+if demandStrShock and showDemandBoxNow
+    demandShockMsg = "DEMAND STR MASSIVE CHANGE | NEW: " + str.tostring(demandStrShockNew, "#.0") + " | OLD: " + str.tostring(demandStrShockOld, "#.0") + " | CHANGE: " + str.tostring(demandStrShockPctVal, "#.0") + "% | " + syminfo.ticker + " " + timeframe.period
+    alert("SOUND BUZZ 1/3 " + demandShockMsg, alert.freq_once_per_bar_close)
+    alert("SOUND BUZZ 2/3 " + demandShockMsg, alert.freq_once_per_bar_close)
+    alert("SOUND BUZZ 3/3 " + demandShockMsg, alert.freq_once_per_bar_close)
+
+if supplyStrShock and showSupplyBoxNow
+    supplyShockMsg = "SUPPLY STR MASSIVE CHANGE | NEW: " + str.tostring(supplyStrShockNew, "#.0") + " | OLD: " + str.tostring(supplyStrShockOld, "#.0") + " | CHANGE: " + str.tostring(supplyStrShockPctVal, "#.0") + "% | " + syminfo.ticker + " " + timeframe.period
+    alert("SOUND BUZZ 1/3 " + supplyShockMsg, alert.freq_once_per_bar_close)
+    alert("SOUND BUZZ 2/3 " + supplyShockMsg, alert.freq_once_per_bar_close)
+    alert("SOUND BUZZ 3/3 " + supplyShockMsg, alert.freq_once_per_bar_close)
+
+//=========================================================
+// HIDDEN ORDER / OTC PROXY
+//=========================================================
+rangeNow = math.max(high - low, syminfo.mintick)
+hiddenDemandProxy = showHiddenOTC and close > open and volume > volSma * stableVolMult and rangeNow < atrVal * narrowRangeATR and close > vwapVal
+hiddenSupplyProxy = showHiddenOTC and close < open and volume > volSma * stableVolMult and rangeNow < atrVal * narrowRangeATR and close < vwapVal
+
+//=========================================================
+// PROBABILITY / FORECAST ENGINE
+//=========================================================
+emaBull = ema9 > ema20 and ema20 > ema50 and ema50 > ema200
+emaBear = ema9 < ema20 and ema20 < ema50 and ema50 < ema200
+
+bullProb = 0.0
+bearProb = 0.0
+
+bullProb += emaBull ? 20 : 0
+bullProb += close > vwapVal ? 15 : 0
+bullProb += demandActive and close > demandLow ? 20 : 0
+bullProb += hiddenDemandProxy ? 15 : 0
+bullProb += goldenCross ? 15 : 0
+bullProb += close > pivot ? 15 : 0
+
+bearProb += emaBear ? 20 : 0
+bearProb += close < vwapVal ? 15 : 0
+bearProb += supplyActive and close < supplyHigh ? 20 : 0
+bearProb += hiddenSupplyProxy ? 15 : 0
+bearProb += deathCross ? 15 : 0
+bearProb += close < pivot ? 15 : 0
+
+bullProb := math.min(bullProb, 100)
+bearProb := math.min(bearProb, 100)
+
+forecastText =
+     bullProb > bearProb ? "BULLISH " + str.tostring(bullProb, "#") + "%" :
+     bearProb > bullProb ? "BEARISH " + str.tostring(bearProb, "#") + "%" :
+     "NEUTRAL"
+
+//=========================================================
+// SAFE BUY / SELL ENTRY POINTER ARROWS
+//=========================================================
+// These pointers are intentionally stricter than normal zone warnings:
+// BUY needs bullish ADX/DMI, VWAP/EMA support, probability edge, momentum candle, and no active supply rejection.
+// SELL needs bearish ADX/DMI, VWAP/EMA resistance, probability edge, momentum candle, and no active demand rejection.
+// Use them as a decision-support signal, not as a guaranteed profit instruction.
+insideSupplyZone = supplyActive and not na(supplyHigh) and not na(supplyLow) and close <= supplyHigh and close >= supplyLow
+insideDemandZone = demandActive and not na(demandHigh) and not na(demandLow) and close <= demandHigh and close >= demandLow
+
+buyOiConfirm = not safeEntryUseOiConfirm or ((na(ceOiChange) or ceOiChange <= 0) and (na(peOiChange) or peOiChange >= 0))
+sellOiConfirm = not safeEntryUseOiConfirm or ((na(ceOiChange) or ceOiChange >= 0) and (na(peOiChange) or peOiChange <= 0))
+
+buyMomentumCandle = close > open and close > close[1] and math.abs(close - open) >= atrVal * safeEntryMinBodyATR
+sellMomentumCandle = close < open and close < close[1] and math.abs(close - open) >= atrVal * safeEntryMinBodyATR
+
+buyZoneConfirm = (supplyActive and not na(supplyHigh) and close > supplyHigh) or (demandActive and not na(demandHigh) and close > demandHigh) or close > pivot
+sellZoneConfirm = (demandActive and not na(demandLow) and close < demandLow) or (supplyActive and not na(supplyLow) and close < supplyLow) or close < pivot
+
+buyOppositeZoneOk = not safeEntryAvoidOppositeZone or not insideSupplyZone
+sellOppositeZoneOk = not safeEntryAvoidOppositeZone or not insideDemandZone
+
+safeBuyRaw = showSafeEntryArrows and barstate.isconfirmed and not na(adxVal) and adxVal >= safeEntryMinAdx and diPlus > diMinus and close > vwapVal and close > ema20 and ema9 >= ema20 and bullProb >= bearProb + safeEntryMinProbGap and buyMomentumCandle and buyZoneConfirm and buyOiConfirm and buyOppositeZoneOk
+safeSellRaw = showSafeEntryArrows and barstate.isconfirmed and not na(adxVal) and adxVal >= safeEntryMinAdx and diMinus > diPlus and close < vwapVal and close < ema20 and ema9 <= ema20 and bearProb >= bullProb + safeEntryMinProbGap and sellMomentumCandle and sellZoneConfirm and sellOiConfirm and sellOppositeZoneOk
+
+var int lastSafeEntryBar = na
+safeEntryCooldownReady = na(lastSafeEntryBar) or bar_index - lastSafeEntryBar >= safeEntryCooldownBars
+safeBuySignal = safeBuyRaw and safeEntryCooldownReady and not safeSellRaw
+safeSellSignal = safeSellRaw and safeEntryCooldownReady and not safeBuyRaw
+
+if safeBuySignal or safeSellSignal
+    lastSafeEntryBar := bar_index
+
+if safeEntryAlertOnArrow and safeBuySignal
+    alert("SAFE BUY POINTER on " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick) + " | Bull Prob: " + str.tostring(bullProb, "#") + "% | ADX: " + str.tostring(adxVal, "#.##"), alert.freq_once_per_bar_close)
+if safeEntryAlertOnArrow and safeSellSignal
+    alert("SAFE SELL POINTER on " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick) + " | Bear Prob: " + str.tostring(bearProb, "#") + "% | ADX: " + str.tostring(adxVal, "#.##"), alert.freq_once_per_bar_close)
+
+//=========================================================
+// ADVANCE WARNINGS
+//=========================================================
+nearDemand = demandActive and not na(demandHigh) and not na(demandLow) and math.abs(close - demandHigh) <= atrVal * warnDistanceATR
+nearSupply = supplyActive and not na(supplyHigh) and not na(supplyLow) and math.abs(close - supplyLow) <= atrVal * warnDistanceATR
+
+touchDemand = demandActive and low <= demandHigh and high >= demandLow
+touchSupply = supplyActive and low <= supplyHigh and high >= supplyLow
+
+breakDemand = demandActive and close < demandLow
+breakSupply = supplyActive and close > supplyHigh
+
+
+
+plotshape(showAdvance and nearDemand,title="Demand Zone Approaching",text="DEMAND",location=location.belowbar,style=shape.labelup,color=colDemandWarn,textcolor=color.white,size=size.small)
+
+plotshape(showAdvance and nearSupply, title="Supply Zone Approaching",text="SUPPLY",location=location.abovebar,style=shape.labeldown,color=colSupplyWarn,textcolor=color.white,size=size.small)
+//=========================================================
+// CE / PE OI MINI BARS WITHIN EACH CANDLE BAR
+//=========================================================
+var line[] oiMiniLines = array.new_line()
+var label oiLegendLabel = na
+
+f_storeOiLine(_ln) =>
+    array.push(oiMiniLines, _ln)
+    maxStoredLines = oiBarHistory * 4
+    if array.size(oiMiniLines) > maxStoredLines
+        oldLine = array.shift(oiMiniLines)
+        line.delete(oldLine)
+
+oiCanDraw = showOiBars and not na(atrVal) and atrVal > 0 and (not na(ceOi) or not na(peOi))
+
+oiDrawAllowed = not optimizeHeavyDrawings or bar_index >= last_bar_index - oiBarHistory
+if oiCanDraw and barstate.isconfirmed and oiDrawAllowed
+    ceBase = high + atrVal * oiBarGapATR
+    peBase = low - atrVal * oiBarGapATR
+
+    if not na(ceOi)
+        ceTotalHeight = atrVal * oiBarMaxHeightATR * math.min(ceOi / maxOiForBars, 1)
+        ceTotalLine = line.new(bar_index, ceBase, bar_index, ceBase + ceTotalHeight, xloc=xloc.bar_index, extend=extend.none, color=colCeOiBase, width=7)
+        f_storeOiLine(ceTotalLine)
+        if not na(ceOiChange) and ceOiChange != 0
+            ceDeltaHeightRaw = atrVal * oiBarMaxHeightATR * math.min(math.abs(ceOiChange) / maxOiDeltaForBars, 1)
+            ceDeltaHeight = math.max(atrVal * 0.05, ceDeltaHeightRaw)
+            ceDeltaColor = ceOiChange > 0 ? colCeOiIncrease : colCeOiDecrease
+            ceDeltaLine = line.new(bar_index, ceBase, bar_index, ceBase + ceDeltaHeight, xloc=xloc.bar_index, extend=extend.none, color=ceDeltaColor, width=3)
+            f_storeOiLine(ceDeltaLine)
+
+    if not na(peOi)
+        peTotalHeight = atrVal * oiBarMaxHeightATR * math.min(peOi / maxOiForBars, 1)
+        peTotalLine = line.new(bar_index, peBase, bar_index, peBase - peTotalHeight, xloc=xloc.bar_index, extend=extend.none, color=colPeOiBase, width=7)
+        f_storeOiLine(peTotalLine)
+        if not na(peOiChange) and peOiChange != 0
+            peDeltaHeightRaw = atrVal * oiBarMaxHeightATR * math.min(math.abs(peOiChange) / maxOiDeltaForBars, 1)
+            peDeltaHeight = math.max(atrVal * 0.05, peDeltaHeightRaw)
+            peDeltaColor = peOiChange > 0 ? colPeOiIncrease : colPeOiDecrease
+            peDeltaLine = line.new(bar_index, peBase, bar_index, peBase - peDeltaHeight, xloc=xloc.bar_index, extend=extend.none, color=peDeltaColor, width=3)
+            f_storeOiLine(peDeltaLine)
+
+if barstate.islast
+    if not na(oiLegendLabel)
+        label.delete(oiLegendLabel)
+    if showOiBars and showOiLegend and (not na(ceOi) or not na(peOi))
+        oiLegendText = "OI MINI BARS"
+        if not na(ceOi)
+            oiLegendText := oiLegendText + "\nCE OI: " + str.tostring(ceOi, format.volume)
+            if not na(ceOiChange)
+                oiLegendText := oiLegendText + " | Δ: " + str.tostring(ceOiChange, format.volume)
+            oiLegendText := oiLegendText + " | SRC: " + ceOiSourceText
+            if showAutoOiSymbolsInLegend and not manualCallOiReady and str.length(ceOiAutoSymbol) > 0
+                oiLegendText := oiLegendText + " | " + ceOiAutoSymbol
+        if not na(peOi)
+            oiLegendText := oiLegendText + "\nPE OI: " + str.tostring(peOi, format.volume)
+            if not na(peOiChange)
+                oiLegendText := oiLegendText + " | Δ: " + str.tostring(peOiChange, format.volume)
+            oiLegendText := oiLegendText + " | SRC: " + peOiSourceText
+            if showAutoOiSymbolsInLegend and not manualPutOiReady and str.length(peOiAutoSymbol) > 0
+                oiLegendText := oiLegendText + " | " + peOiAutoSymbol
+        oiLegendText := oiLegendText + "\nCE ↑ Red / CE ↓ Green | PE ↑ Green / PE ↓ Red"
+        oiLegendLabel := label.new(bar_index, high + atrVal * 3.40, oiLegendText, style=label.style_label_left, color=color.black, textcolor=color.white, size=size.small)
+
+
+//=========================================================
+// ADX/DMI CROSSING BELL BUZZ
+//=========================================================
+var int adxDmiBuzzStartedAtMs = na
+var int lastAdxDmiBuzzBar = na
+var label adxDmiBuzzIconLabel = na
+
+adxDmiBuzzCrossText =
+     diPlusDiMinusAnyCross ? "DI+ / DI- CROSS" :
+     adxCrossDiPlus ? "ADX / DI+ CROSS" :
+     adxCrossDiMinus ? "ADX / DI- CROSS" :
+     "ADX/DMI CROSS"
+
+if adxDmiAnyCross and (na(lastAdxDmiBuzzBar) or lastAdxDmiBuzzBar != bar_index)
+    lastAdxDmiBuzzBar := bar_index
+    adxDmiBuzzStartedAtMs := timenow
+    adxDmiBuzzMsg = "TEMPLE BELL BUZZ | " + adxDmiBuzzCrossText + " | " + syminfo.ticker + " " + timeframe.period + " | ADX: " + str.tostring(adxVal, "#.##") + " | DI+: " + str.tostring(diPlus, "#.##") + " | DI-: " + str.tostring(diMinus, "#.##")
+    if adxDmiBellRepeatCount >= 1
+        alert("🔔 1/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 2
+        alert("🔔 2/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 3
+        alert("🔔 3/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 4
+        alert("🔔 4/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 5
+        alert("🔔 5/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 6
+        alert("🔔 6/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 7
+        alert("🔔 7/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 8
+        alert("🔔 8/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 9
+        alert("🔔 9/10 " + adxDmiBuzzMsg, alert.freq_all)
+    if adxDmiBellRepeatCount >= 10
+        alert("🔔 10/10 " + adxDmiBuzzMsg, alert.freq_all)
+
+adxDmiBuzzActive = not na(adxDmiBuzzStartedAtMs) and timenow - adxDmiBuzzStartedAtMs <= adxDmiBuzzSeconds * 1000
+adxDmiBuzzFrameNo = adxDmiBuzzActive ? int(math.floor(timenow / 350)) % 4 : 0
+adxDmiBuzzFrameText =
+     adxDmiBuzzFrameNo == 0 ? "🔔" :
+     adxDmiBuzzFrameNo == 1 ? "⚡🔔" :
+     adxDmiBuzzFrameNo == 2 ? "💥🔔" :
+     "🔔✨"
+
+// Separate animated chart icon. This does NOT add rows to the ADX/DMI table,
+// so the original ADX/DMI panel size remains stable. Pine cannot render a true GIF,
+// but this cycles emoji frames on realtime ticks to simulate animation.
+if barstate.islast
+    if not na(adxDmiBuzzIconLabel)
+        label.delete(adxDmiBuzzIconLabel)
+        adxDmiBuzzIconLabel := na
+    if showAdxDmiBellBuzzChartIcon and adxDmiBuzzActive
+        buzzIconY = high + atrVal * adxDmiBuzzIconYOffsetATR
+        adxDmiBuzzIconLabel := label.new(bar_index + adxDmiBuzzIconXOffset, buzzIconY, adxDmiBuzzFrameText + "\nBUZZ", xloc=xloc.bar_index, style=label.style_label_down, color=colAdxDmiBellBuzz, textcolor=color.white, size=size.normal)
+    if not adxDmiBuzzActive and not na(adxDmiBuzzStartedAtMs)
+        adxDmiBuzzStartedAtMs := na
+
+//=========================================================
+// ADX / DI+ / DI- PANEL
+//=========================================================
+// Stable 6-row layout. Buzz is shown only in the footer row and auto-clears
+// after the configured visible seconds; the ADX/DMI header remains unchanged.
+var table adxDmiTable = table.new(position.bottom_right, 2, 6, border_width=1)
+
+if barstate.islast and showAdxDmi
+    table.clear(adxDmiTable, 0, 0, 1, 5)
+    adxReady = not na(adxVal) and not na(diPlus) and not na(diMinus)
+    headerBg = adxReady ? (diPlus >= diMinus ? color.new(color.green, 0) : color.new(color.red, 0)) : color.new(color.gray, 0)
+    table.cell(adxDmiTable, 0, 0, "ADX / DMI", text_color=color.white, bgcolor=headerBg, text_size=size.small)
+    table.cell(adxDmiTable, 1, 0, adxReady ? diBiasText : "CALCULATING", text_color=color.white, bgcolor=headerBg, text_size=size.normal)
+    table.cell(adxDmiTable, 0, 1, "ADX", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(adxDmiTable, 1, 1, adxReady ? str.tostring(adxVal, "#.##") : "WAIT", text_color=colAdx, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(adxDmiTable, 0, 2, "DI+", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(adxDmiTable, 1, 2, adxReady ? str.tostring(diPlus, "#.##") : "WAIT", text_color=colDiPlus, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(adxDmiTable, 0, 3, "DI-", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(adxDmiTable, 1, 3, adxReady ? str.tostring(diMinus, "#.##") : "WAIT", text_color=colDiMinus, bgcolor=colRedTextCellBg, text_size=size.normal)
+    table.cell(adxDmiTable, 0, 4, "STRENGTH", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(adxDmiTable, 1, 4, adxReady ? adxStrengthText : "WAIT", text_color=color.white, bgcolor=adxReady and adxVal >= adxStrongLevel ? color.new(color.orange, 0) : color.new(color.gray, 30), text_size=size.normal)
+    footerBg = adxDmiBuzzActive ? colAdxDmiBellBuzz : color.new(color.black, 100)
+    footerLeft = adxDmiBuzzActive ? adxDmiBuzzFrameText + " BUZZ" : ""
+    footerRight = adxDmiBuzzActive ? adxDmiBuzzCrossText : ""
+    table.cell(adxDmiTable, 0, 5, footerLeft, text_color=color.white, bgcolor=footerBg, text_size=size.small)
+    table.cell(adxDmiTable, 1, 5, footerRight, text_color=color.white, bgcolor=footerBg, text_size=size.normal)
+
+if barstate.islast and not showAdxDmi
+    table.clear(adxDmiTable, 0, 0, 1, 5)
+
+
+//=========================================================
+// DEMAND / SUPPLY PRESSURE PRIORITY ENGINE
+//=========================================================
+// Priority is not decided by only one raw number.
+// The engine ranks DEMAND vs SUPPLY using STR, OI, Volume, price location, and ADX/DMI direction.
+pressureDemandVol = f_safe_zone_volume(demandVolumeStored, volume, volSma)
+pressureSupplyVol = f_safe_zone_volume(supplyVolumeStored, volume, volSma)
+pressureDemandStr = na(demandScoreStored) or demandScoreStored <= 0 ? f_safe_zone_score(volume, volSma, math.abs(open - close), atrVal) : demandScoreStored
+pressureSupplyStr = na(supplyScoreStored) or supplyScoreStored <= 0 ? f_safe_zone_score(volume, volSma, math.abs(open - close), atrVal) : supplyScoreStored
+pressureDemandOi = na(demandOiStored) ? 0.0 : demandOiStored
+pressureSupplyOi = na(supplyOiStored) ? 0.0 : supplyOiStored
+
+pressureVolTotal = math.max(pressureDemandVol + pressureSupplyVol, 1.0)
+pressureOiTotal = pressureDemandOi + pressureSupplyOi
+pressureDemandVolPct = pressureDemandVol / pressureVolTotal * 100.0
+pressureSupplyVolPct = pressureSupplyVol / pressureVolTotal * 100.0
+pressureDemandOiPct = pressureOiTotal > 0 ? pressureDemandOi / pressureOiTotal * 100.0 : 50.0
+pressureSupplyOiPct = pressureOiTotal > 0 ? pressureSupplyOi / pressureOiTotal * 100.0 : 50.0
+
+pressureNearDemand = showDemandBoxNow and close >= displayDemandLow - atrVal * pressureNearZoneATR and close <= displayDemandHigh + atrVal * pressureNearZoneATR
+pressureNearSupply = showSupplyBoxNow and close >= displaySupplyLow - atrVal * pressureNearZoneATR and close <= displaySupplyHigh + atrVal * pressureNearZoneATR
+pressureDemandLocationScore = pressureNearDemand ? 70.0 : demandActive ? 55.0 : 50.0
+pressureSupplyLocationScore = pressureNearSupply ? 70.0 : supplyActive ? 55.0 : 50.0
+pressureDemandDirectionScore = adxVal >= adxTrendLevel and diPlus >= diMinus ? 70.0 : diPlus >= diMinus ? 60.0 : 45.0
+pressureSupplyDirectionScore = adxVal >= adxTrendLevel and diMinus >= diPlus ? 70.0 : diMinus >= diPlus ? 60.0 : 45.0
+
+// Weighting: STR and OI get the highest priority, but Volume, live price location, and ADX/DMI are also included.
+pressureDemandScore = pressureDemandStr * 0.30 + pressureDemandOiPct * 0.30 + pressureDemandVolPct * 0.20 + pressureDemandLocationScore * 0.10 + pressureDemandDirectionScore * 0.10
+pressureSupplyScore = pressureSupplyStr * 0.30 + pressureSupplyOiPct * 0.30 + pressureSupplyVolPct * 0.20 + pressureSupplyLocationScore * 0.10 + pressureSupplyDirectionScore * 0.10
+pressureEdge = pressureDemandScore - pressureSupplyScore
+
+pressureStrEdge = pressureDemandStr - pressureSupplyStr
+pressureOiEdge = pressureDemandOiPct - pressureSupplyOiPct
+pressureVolEdge = pressureDemandVolPct - pressureSupplyVolPct
+pressureAbsStrEdge = math.abs(pressureStrEdge)
+pressureAbsOiEdge = math.abs(pressureOiEdge)
+pressureAbsVolEdge = math.abs(pressureVolEdge)
+pressureLeadFactor = pressureAbsOiEdge >= pressureAbsStrEdge and pressureAbsOiEdge >= pressureAbsVolEdge ? "OI" : pressureAbsStrEdge >= pressureAbsVolEdge ? "STR" : "VOL"
+
+pressureDemandWins = showPressurePriority and pressureEdge >= pressureDominanceThreshold
+pressureSupplyWins = showPressurePriority and pressureEdge <= -pressureDominanceThreshold
+pressureBuyAdvance = pressureDemandWins and (pressureNearDemand or diPlus >= diMinus or bullProb >= bearProb)
+pressureSellAdvance = pressureSupplyWins and (pressureNearSupply or diMinus >= diPlus or bearProb >= bullProb)
+pressurePriorityText = pressureDemandWins ? "DEMAND > SUPPLY" : pressureSupplyWins ? "SUPPLY > DEMAND" : "BALANCED"
+pressurePriorityColor = pressureDemandWins ? colPressureBuy : pressureSupplyWins ? colPressureSell : colPressureWait
+pressureScoreText = "D " + str.tostring(pressureDemandScore, "#.0") + " / S " + str.tostring(pressureSupplyScore, "#.0")
+pressureLeadText = pressureLeadFactor + " | Δ " + str.tostring(math.abs(pressureEdge), "#.0")
+pressureAdvanceText = pressureBuyAdvance ? "ADV BUY WATCH" : pressureSellAdvance ? "ADV SELL WATCH" : "WAIT"
+pressureAdvanceColor = pressureBuyAdvance ? colPressureBuy : pressureSellAdvance ? colPressureSell : colPressureWait
+
+var label pressureAdvanceLabel = na
+if barstate.islast
+    if not na(pressureAdvanceLabel)
+        label.delete(pressureAdvanceLabel)
+    if showPressurePriority and pressureShowAdvanceLabel and (pressureBuyAdvance or pressureSellAdvance)
+        pressureLabelY = pressureBuyAdvance ? low - atrVal * 1.20 : high + atrVal * 1.20
+        pressureLabelText = pressureBuyAdvance ? "ADV\nBUY\n" + pressureLeadFactor : "ADV\nSELL\n" + pressureLeadFactor
+        pressureAdvanceLabel := label.new(bar_index + 1, pressureLabelY, pressureLabelText, xloc=xloc.bar_index, style=pressureBuyAdvance ? label.style_label_up : label.style_label_down, color=pressureAdvanceColor, textcolor=color.white, size=size.normal)
+
+var int lastPressureAdvanceAlertBar = na
+if pressureAlertOnAdvance and (pressureBuyAdvance or pressureSellAdvance) and (na(lastPressureAdvanceAlertBar) or bar_index - lastPressureAdvanceAlertBar >= pressureAlertCooldownBars)
+    lastPressureAdvanceAlertBar := bar_index
+    pressureAlertMsg = (pressureBuyAdvance ? "ADV BUY WATCH" : "ADV SELL WATCH") + " | PRIORITY: " + pressurePriorityText + " | " + pressureScoreText + " | LEAD: " + pressureLeadText + " | " + syminfo.ticker + " " + timeframe.period
+    alert("JUNGLEEFROGS PRESSURE PRIORITY | " + pressureAlertMsg, alert.freq_once_per_bar)
+
+//=========================================================
+// ANTI-TRAP + ADVANCE TRIGGER ENGINE
+//=========================================================
+// This layer helps avoid blind ADV BUY/SELL entries when price is stuck between zones,
+// sweeping liquidity, or moving against the dominant zone. It also prints exact trigger/invalid levels.
+zoneGapRaw = showDemandBoxNow and showSupplyBoxNow ? displaySupplyLow - displayDemandHigh : na
+zoneGap = na(zoneGapRaw) ? na : math.max(zoneGapRaw, 0.0)
+priceBetweenZones = showDemandBoxNow and showSupplyBoxNow and close >= displayDemandLow and close <= displaySupplyHigh
+zoneCompression = showDemandBoxNow and showSupplyBoxNow and not na(zoneGap) and zoneGap <= atrVal * trapCompressionATR and priceBetweenZones
+bothZonesStrong = pressureDemandScore >= trapBothStrongScore and pressureSupplyScore >= trapBothStrongScore and math.abs(pressureEdge) <= trapLowEdge
+buyIntoSupplyTrap = pressureBuyAdvance and pressureNearSupply and not pressureNearDemand
+sellIntoDemandTrap = pressureSellAdvance and pressureNearDemand and not pressureNearSupply
+fakeBuyBreakout = showSupplyBoxNow and high > displaySupplyHigh and close < displaySupplyHigh
+fakeSellBreakdown = showDemandBoxNow and low < displayDemandLow and close > displayDemandLow
+trapHigh = zoneCompression or buyIntoSupplyTrap or sellIntoDemandTrap or fakeBuyBreakout or fakeSellBreakdown
+trapMedium = not trapHigh and (bothZonesStrong or math.abs(pressureEdge) < pressureDominanceThreshold or (adxVal >= adxTrendLevel and math.abs(diPlus - diMinus) < 3.0))
+trapRiskText = trapHigh ? "HIGH TRAP" : trapMedium ? "MEDIUM" : "LOW"
+trapRiskColor = trapHigh ? color.red : trapMedium ? color.orange : color.lime
+trapReasonText = fakeBuyBreakout ? "FAKE BUY BREAK" : fakeSellBreakdown ? "FAKE SELL BREAK" : buyIntoSupplyTrap ? "BUY INTO SUPPLY" : sellIntoDemandTrap ? "SELL INTO DEMAND" : zoneCompression ? "ZONE SQUEEZE" : bothZonesStrong ? "BOTH STRONG" : "OK"
+
+// MTF Power uses available non-repainting AMP levels: current chart + confirmation TF + regime TF.
+mtfBullPower = (ampMacdCurr > ampSigCurr ? 30.0 : 0.0) + (ampConfirmBull ? 35.0 : 0.0) + (ampRegimeBull ? 35.0 : 0.0)
+mtfBearPower = (ampMacdCurr < ampSigCurr ? 30.0 : 0.0) + (ampConfirmBear ? 35.0 : 0.0) + (ampRegimeBear ? 35.0 : 0.0)
+mtfPowerText = mtfBullPower > mtfBearPower ? str.tostring(mtfBullPower, "#") + "% BULL" : mtfBearPower > mtfBullPower ? str.tostring(mtfBearPower, "#") + "% BEAR" : "50% FLAT"
+mtfPowerColor = mtfBullPower > mtfBearPower ? color.lime : mtfBearPower > mtfBullPower ? color.red : color.yellow
+
+triggerBuffer = syminfo.mintick * triggerBufferTicks
+advBuyTrigger = high + triggerBuffer
+advSellTrigger = low - triggerBuffer
+advBuyInvalid = showDemandBoxNow ? displayDemandLow - atrVal * invalidBufferATR : low - atrVal * invalidBufferATR
+advSellInvalid = showSupplyBoxNow ? displaySupplyHigh + atrVal * invalidBufferATR : high + atrVal * invalidBufferATR
+advanceTriggerText = pressureBuyAdvance ? "BUY > " + str.tostring(advBuyTrigger, format.mintick) : pressureSellAdvance ? "SELL < " + str.tostring(advSellTrigger, format.mintick) : "WAIT"
+advanceInvalidText = pressureBuyAdvance ? "BAD < " + str.tostring(advBuyInvalid, format.mintick) : pressureSellAdvance ? "BAD > " + str.tostring(advSellInvalid, format.mintick) : "WAIT"
+advanceTriggerColor = pressureBuyAdvance ? color.lime : pressureSellAdvance ? color.red : color.gray
+advanceInvalidColor = pressureBuyAdvance or pressureSellAdvance ? color.orange : color.gray
+
+tradeModeText = trapHigh ? "AVOID / TRAP" : pressureBuyAdvance ? "PREPARE BUY" : pressureSellAdvance ? "PREPARE SELL" : ampTradeAction == "ENTER BUY" or ampTradeAction == "ENTER SELL" ? "TRADE" : ampTradeAction == "EXIT LONG" or ampTradeAction == "EXIT SHORT" ? "EXIT NOW" : "WAIT"
+tradeModeColor = trapHigh ? color.red : pressureBuyAdvance ? color.lime : pressureSellAdvance ? color.red : str.contains(ampTradeAction, "EXIT") ? color.orange : color.yellow
+
+var label trapRiskLabel = na
+if barstate.islast
+    if not na(trapRiskLabel)
+        label.delete(trapRiskLabel)
+    if showTrapRiskLabels and trapHigh
+        trapY = fakeBuyBreakout or buyIntoSupplyTrap ? high + atrVal * 1.60 : low - atrVal * 1.60
+        trapRiskLabel := label.new(bar_index + 1, trapY, "TRAP\n" + trapReasonText, xloc=xloc.bar_index, style=fakeBuyBreakout or buyIntoSupplyTrap ? label.style_label_down : label.style_label_up, color=color.new(color.red, 0), textcolor=color.white, size=size.normal)
+
+var int lastTrapAlertBar = na
+if trapHigh and (na(lastTrapAlertBar) or bar_index - lastTrapAlertBar >= pressureAlertCooldownBars)
+    lastTrapAlertBar := bar_index
+    alert("JUNGLEEFROGS TRAP RISK | " + trapReasonText + " | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar)
+
+//=========================================================
+// ADVANCED MACD PREDICTOR DASHBOARD
+//=========================================================
+ampDashPos = ampDashboardPositionInput == "Top Right" ? position.top_right : ampDashboardPositionInput == "Middle Right" ? position.middle_right : ampDashboardPositionInput == "Bottom Right" ? position.bottom_right : ampDashboardPositionInput == "Top Left" ? position.top_left : ampDashboardPositionInput == "Middle Left" ? position.middle_left : position.bottom_left
+// Split layout note: Pine tables cannot be pixel-offset side-by-side at the same anchor.
+// This single 5-column table visually behaves like two compact tables with a thin spacer column,
+// reducing vertical height while keeping both sections together at top-right.
+var table ampDashTable = table.new(ampDashPos, 5, 11, bgcolor=colAmpDashBg, border_width=1)
+
+if barstate.islast and showAmpMacdPredictor and ampShowDashboard
+    table.clear(ampDashTable, 0, 0, 4, 10)
+
+    // FINAL DISPLAY ACTION FIX:
+    // ampTradeAction may be WAIT when the MACD module has no confirmed/early signal,
+    // but the Demand/Supply pressure engine may already be warning ADV BUY/SELL.
+    // Show that pressure advance in the header/action rows so the trader sees the fastest actionable context.
+    ampDisplayAction =
+         trapHigh ? "TRAP / AVOID" :
+         ampTradeAction == "WAIT" and pressureBuyAdvance ? "ADV BUY WATCH" :
+         ampTradeAction == "WAIT" and pressureSellAdvance ? "ADV SELL WATCH" :
+         ampTradeAction
+
+    ampDisplayActionColor =
+         ampDisplayAction == "TRAP / AVOID" ? color.red :
+         ampDisplayAction == "ADV BUY WATCH" ? color.lime :
+         ampDisplayAction == "ADV SELL WATCH" ? color.red :
+         str.contains(ampDisplayAction, "ENTER BUY") or str.contains(ampDisplayAction, "NEAR ENTER BUY") ? color.lime :
+         str.contains(ampDisplayAction, "ENTER SELL") or str.contains(ampDisplayAction, "NEAR ENTER SELL") ? color.red :
+         str.contains(ampDisplayAction, "EXIT") ? color.orange :
+         color.yellow
+
+    ampDisplayQuickRiskText =
+         trapHigh ? "TRAP RISK" :
+         ampQuickRiskText == "NO TRADE" and pressureBuyAdvance ? "PREPARE BUY" :
+         ampQuickRiskText == "NO TRADE" and pressureSellAdvance ? "PREPARE SELL" :
+         ampQuickRiskText
+
+    ampDisplayQuickRiskColor =
+         ampDisplayQuickRiskText == "TRAP RISK" ? color.red :
+         ampDisplayQuickRiskText == "PREPARE BUY" ? color.lime :
+         ampDisplayQuickRiskText == "PREPARE SELL" ? color.red :
+         ampQuickRiskColor
+
+    // FOLLOW TF GUIDE:
+    // 60m/Regime = background, 15m/Confirm = bias, 5m/Execution = trigger, 1m/3m = fine entry or fast exit.
+    // The row below tells the trader which timeframe to prioritize now.
+    ampFollowTfText =
+         str.contains(ampDisplayAction, "EXIT") ? "EXIT " + ampFineEntryTf + "/" + ampExecutionTf :
+         ampDisplayAction == "ADV BUY WATCH" or ampDisplayAction == "ADV SELL WATCH" ? "FOLLOW " + ampExecutionTf + " | BIAS " + ampConfirmTf :
+         str.contains(ampDisplayAction, "ENTER") ? "EXEC " + ampExecutionTf + " | HOLD " + ampConfirmTf :
+         ampMtfAlignedBull or ampMtfAlignedBear ? "BIAS " + ampConfirmTf + " | TRG " + ampExecutionTf :
+         adxVal >= adxStrongLevel ? "TRG " + ampExecutionTf + " | FINE " + ampFineEntryTf :
+         "WAIT " + ampExecutionTf
+    ampFollowTfColor =
+         str.contains(ampFollowTfText, "EXIT") ? color.orange :
+         str.contains(ampFollowTfText, "FOLLOW") or str.contains(ampFollowTfText, "EXEC") or str.contains(ampFollowTfText, "BIAS") ? color.lime :
+         str.contains(ampFollowTfText, "TRG") ? color.yellow :
+         color.gray
+
+    ampDecisionBg = ampDisplayAction == "TRAP / AVOID" ? color.new(color.red, 0) : str.contains(ampDisplayAction, "BUY") ? color.new(color.green, 0) : str.contains(ampDisplayAction, "SELL") ? color.new(color.red, 0) : str.contains(ampDisplayAction, "EXIT") ? color.new(color.orange, 0) : color.new(color.gray, 20)
+
+    // FIX: This row must follow the trader Action, not only ampFinalDecision.
+    // ampFinalDecision often stays WAIT during cooldown, while Action may correctly show EXIT / NEAR ENTER.
+    ampActionBuySide = ampDisplayAction == "ENTER BUY" or ampDisplayAction == "NEAR ENTER BUY" or ampDisplayAction == "EARLY ENTER BUY"
+    ampActionSellSide = ampDisplayAction == "ENTER SELL" or ampDisplayAction == "NEAR ENTER SELL" or ampDisplayAction == "EARLY ENTER SELL"
+    ampActionAdvBuy = ampDisplayAction == "ADV BUY WATCH"
+    ampActionAdvSell = ampDisplayAction == "ADV SELL WATCH"
+    ampActionExitLong = ampDisplayAction == "EXIT LONG"
+    ampActionExitShort = ampDisplayAction == "EXIT SHORT"
+    ampActionNearExitLong = ampDisplayAction == "NEAR EXIT LONG"
+    ampActionNearExitShort = ampDisplayAction == "NEAR EXIT SHORT"
+    ampAdvBuyTrigger = advBuyTrigger
+    ampAdvSellTrigger = advSellTrigger
+
+    // For EXIT actions, do not print a fixed price from Pine close.
+    // TradingView chart close can be stale/different from the broker/watchlist LTP,
+    // so price-based exit text was misleading. Use the broker/live chart price to execute.
+    ampLevelsText =
+         trapHigh ? "DO NOT CHASE" :
+         ampActionBuySide ? "SL " + str.tostring(ampLongSL, format.mintick) + " / T1 " + str.tostring(ampLongT1, format.mintick) :
+         ampActionSellSide ? "SL " + str.tostring(ampShortSL, format.mintick) + " / T1 " + str.tostring(ampShortT1, format.mintick) :
+         ampActionAdvBuy ? "BUY TRG > " + str.tostring(ampAdvBuyTrigger, format.mintick) :
+         ampActionAdvSell ? "SELL TRG < " + str.tostring(ampAdvSellTrigger, format.mintick) :
+         ampActionExitLong ? "EXIT LONG NOW" :
+         ampActionExitShort ? "EXIT SHORT NOW" :
+         ampActionNearExitLong ? "NEAR EXIT LONG" :
+         ampActionNearExitShort ? "NEAR EXIT SHORT" :
+         "WAIT"
+    ampLevelsColor = trapHigh ? color.red : ampActionBuySide or ampActionAdvBuy ? color.lime : ampActionSellSide or ampActionAdvSell ? color.red : ampActionExitLong or ampActionExitShort or ampActionNearExitLong or ampActionNearExitShort ? color.orange : color.white
+
+    ampScoreText = "B " + str.tostring(ampBullScore) + " / S " + str.tostring(ampBearScore)
+    ampScoreColor = ampBullScore > ampBearScore ? color.lime : ampBearScore > ampBullScore ? color.red : color.yellow
+
+    spacerBg = color.new(color.black, 100)
+    darkCellBg = color.new(color.black, 0)
+    redTextBg = colRedTextCellBg
+
+    // Yellow background is applied only where the visible table text is red / danger-side.
+    ampRegimeBg = ampRegimeText == "BEARISH" ? redTextBg : darkCellBg
+    ampMtfBg = ampMacdRegimeTf < ampSigRegimeTf ? redTextBg : darkCellBg
+    mtfPowerBg = mtfBearPower > mtfBullPower ? redTextBg : darkCellBg
+    trapRiskBg = trapHigh ? redTextBg : darkCellBg
+    tradeModeBg = trapHigh or pressureSellAdvance ? redTextBg : darkCellBg
+    advanceTriggerBg = pressureSellAdvance ? redTextBg : darkCellBg
+    pressurePriorityBg = pressureSupplyWins ? redTextBg : darkCellBg
+    pressureAdvanceBg = pressureSellAdvance ? redTextBg : darkCellBg
+    quickRiskBg = ampDisplayQuickRiskText == "TRAP RISK" or ampDisplayQuickRiskText == "PREPARE SELL" ? redTextBg : darkCellBg
+    actionBg = ampDisplayAction == "TRAP / AVOID" or ampDisplayAction == "ADV SELL WATCH" or str.contains(ampDisplayAction, "ENTER SELL") or str.contains(ampDisplayAction, "NEAR ENTER SELL") ? redTextBg : darkCellBg
+    levelsBg = trapHigh or ampActionSellSide or ampActionAdvSell ? redTextBg : darkCellBg
+    bearScoreBg = redTextBg
+
+    // LEFT COMPACT TABLE: Market state / timing / trap / trigger.
+    table.cell(ampDashTable, 0, 0, "AMP-MTF", text_color=color.white, bgcolor=ampDecisionBg, text_size=size.small)
+    table.cell(ampDashTable, 1, 0, ampDisplayAction, text_color=color.white, bgcolor=ampDecisionBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 1, "Regime", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 1, ampRegimeText, text_color=ampRegimeText == "BULLISH" ? color.lime : ampRegimeText == "BEARISH" ? color.red : color.yellow, bgcolor=ampRegimeBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 2, "MTF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 2, ampMtfText, text_color=ampMacdRegimeTf > ampSigRegimeTf ? color.lime : color.red, bgcolor=ampMtfBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 3, "MTF Power", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 3, mtfPowerText, text_color=mtfPowerColor, bgcolor=mtfPowerBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 4, "Follow TF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 4, ampFollowTfText, text_color=ampFollowTfColor, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(ampDashTable, 0, 5, "Trap Risk", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 5, trapRiskText, text_color=trapRiskColor, bgcolor=trapRiskBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 6, "Trade Mode", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 6, tradeModeText, text_color=tradeModeColor, bgcolor=tradeModeBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 7, "Trigger", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 7, advanceTriggerText, text_color=advanceTriggerColor, bgcolor=advanceTriggerBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 8, "Invalid", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 8, advanceInvalidText, text_color=advanceInvalidColor, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(ampDashTable, 0, 9, "ADX", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 9, str.tostring(adxVal, "#.##"), text_color=adxVal > adxTrendLevel ? color.yellow : color.gray, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(ampDashTable, 0, 10, "Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 10, ampScoreText, text_color=ampScoreColor, bgcolor=color.new(color.black, 0), text_size=size.normal)
+
+    // Spacer column to visually split the dashboard into two side-by-side parts.
+    for r = 0 to 10
+        table.cell(ampDashTable, 2, r, " ", text_color=color.new(color.white, 100), bgcolor=spacerBg, text_size=size.tiny)
+
+    // RIGHT COMPACT TABLE: Pressure / advance / risk / action / levels.
+    pressureHeaderBg = pressureBuyAdvance ? color.new(color.green, 0) : pressureSellAdvance ? color.new(color.red, 0) : color.new(color.orange, 0)
+    table.cell(ampDashTable, 3, 0, "PRESSURE", text_color=color.white, bgcolor=pressureHeaderBg, text_size=size.small)
+    table.cell(ampDashTable, 4, 0, pressureAdvanceText, text_color=color.white, bgcolor=pressureHeaderBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 1, "Priority", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 1, pressurePriorityText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 2, "Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 2, pressureScoreText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 3, "Lead", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 3, pressureLeadText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 4, "Advance", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 4, pressureAdvanceText, text_color=pressureAdvanceColor, bgcolor=pressureAdvanceBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 5, "Divergence", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 5, ampDivText, text_color=ampDivText == "NONE" ? color.gray : color.yellow, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(ampDashTable, 3, 6, "Quick Risk", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 6, ampDisplayQuickRiskText, text_color=ampDisplayQuickRiskColor, bgcolor=quickRiskBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 7, "Action", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 7, ampDisplayAction, text_color=ampDisplayActionColor, bgcolor=actionBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 8, "SL/T1/Exit", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 8, ampLevelsText, text_color=ampLevelsColor, bgcolor=levelsBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 9, "Bull Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 9, str.tostring(ampBullScore) + "/100", text_color=color.lime, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(ampDashTable, 3, 10, "Bear Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 10, str.tostring(ampBearScore) + "/100", text_color=color.red, bgcolor=bearScoreBg, text_size=size.normal)
+
+if barstate.islast and (not showAmpMacdPredictor or not ampShowDashboard)
+    table.clear(ampDashTable, 0, 0, 4, 10)
+
+//=========================================================
+// PROBABILITY LABEL
+//=========================================================
+var label probLabel = na
+if barstate.islast and showProbability
+    if not na(probLabel)
+        label.delete(probLabel)
+    probText =
+         "FORECAST: " + forecastText + "\n" +
+         "BULL PROB: " + str.tostring(bullProb, "#") + "%\n" +
+         "BEAR PROB: " + str.tostring(bearProb, "#") + "%"
+
+    // Forecast box anti-overlap protection.
+    // Keep the forecast box significantly below the visible Demand/Supply boxes
+    // and shift it to the right of the latest bar so it does not sit on top of zone labels.
+    forecastDefaultY = low - atrVal * 1.5
+    forecastGap = math.max(atrVal * forecastZoneGapATR, syminfo.mintick * 20)
+    forecastSafeY = forecastDefaultY
+
+    if showDemandBoxNow
+        forecastSafeY := math.min(forecastSafeY, displayDemandLow - forecastGap)
+    if showSupplyBoxNow
+        forecastSafeY := math.min(forecastSafeY, displaySupplyLow - forecastGap)
+
+    forecastX = forecastAlignCurrentCandle ? bar_index + 1 : bar_index + forecastRightOffsetBars
+    probLabel := label.new(forecastX, forecastSafeY, probText, xloc=xloc.bar_index, style=label.style_label_left, color=bullProb >= bearProb ? colBullProb : colBearProb, textcolor=color.white, size=size.normal)
+
+//=========================================================
+// PLOTS
+//=========================================================
+plot(showPivots ? pivot : na, "Pivot", color=colPivot, linewidth=2, style=plot.style_linebr)
+plot(showPivots ? r1 : na, "R1", color=colR1, linewidth=1, style=plot.style_linebr)
+plot(showPivots ? r2 : na, "R2", color=colR2, linewidth=1, style=plot.style_linebr)
+plot(showPivots ? r3 : na, "R3", color=colR3, linewidth=1, style=plot.style_linebr)
+plot(showPivots ? s1 : na, "S1", color=colS1, linewidth=1, style=plot.style_linebr)
+plot(showPivots ? s2 : na, "S2", color=colS2, linewidth=1, style=plot.style_linebr)
+plot(showPivots ? s3 : na, "S3", color=colS3, linewidth=1, style=plot.style_linebr)
+
+plot(showEMAs ? ema9 : na, "EMA 9", color=colEMA9, linewidth=2)
+plot(showEMAs ? ema20 : na, "EMA 20", color=colEMA20, linewidth=2)
+plot(showEMAs ? ema50 : na, "EMA 50", color=colEMA50, linewidth=2)
+plot(showEMAs ? ema200 : na, "EMA 200", color=colEMA200, linewidth=2)
+
+plotshape(showEMAs and goldenCross ? ema50 : na, title="Golden Cross", text="GOLDEN CROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
+plotshape(showEMAs and deathCross ? ema50 : na, title="Death Cross", text="DEATH CROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
+
+plotshape(safeBuySignal ? low : na, title="Safe BUY Entry Pointer", text="SAFE\nBUY", location=location.absolute, style=shape.labelup, size=size.normal, color=colSafeBuyArrow, textcolor=color.black)
+plotshape(safeSellSignal ? high : na, title="Safe SELL Entry Pointer", text="SAFE\nSELL", location=location.absolute, style=shape.labeldown, size=size.normal, color=colSafeSellArrow, textcolor=color.white)
+
+plotshape(showAmpMacdPredictor and ampShowSignals and ampStrongBuySignal ? low - atrVal * 0.60 : na, title="AMP Strong Buy Signal", text="AMP\nSTRONG\nBUY", location=location.absolute, style=shape.labelup, size=size.small, color=colAmpStrongBuy, textcolor=color.black)
+plotshape(showAmpMacdPredictor and ampShowSignals and ampBuySignal ? low - atrVal * 0.60 : na, title="AMP Buy Signal", text="AMP\nBUY", location=location.absolute, style=shape.labelup, size=size.small, color=colAmpBuy, textcolor=color.white)
+plotshape(showAmpMacdPredictor and ampShowSignals and ampStrongSellSignal ? high + atrVal * 0.60 : na, title="AMP Strong Sell Signal", text="AMP\nSTRONG\nSELL", location=location.absolute, style=shape.labeldown, size=size.small, color=colAmpStrongSell, textcolor=color.white)
+plotshape(showAmpMacdPredictor and ampShowSignals and ampSellSignal ? high + atrVal * 0.60 : na, title="AMP Sell Signal", text="AMP\nSELL", location=location.absolute, style=shape.labeldown, size=size.small, color=colAmpSell, textcolor=color.white)
+
+// EARLY AMP BUY/SELL is drawn with a live label instead of plotshape to avoid increasing TradingView plot count.
+// It refreshes on the running candle and can disappear if the early setup invalidates before candle close.
+var label ampEarlyLiveLabel = na
+if barstate.islast
+    if not na(ampEarlyLiveLabel)
+        label.delete(ampEarlyLiveLabel)
+        ampEarlyLiveLabel := na
+    if showAmpMacdPredictor and ampShowSignals and ampEarlyBuySignal
+        ampEarlyLiveLabel := label.new(bar_index, low - atrVal * 0.95, "AMP\nEARLY\nBUY", xloc=xloc.bar_index, style=label.style_label_up, color=colAmpBuy, textcolor=color.white, size=size.small)
+    if showAmpMacdPredictor and ampShowSignals and ampEarlySellSignal
+        ampEarlyLiveLabel := label.new(bar_index, high + atrVal * 0.95, "AMP\nEARLY\nSELL", xloc=xloc.bar_index, style=label.style_label_down, color=colAmpSell, textcolor=color.white, size=size.small)
+plotshape(hiddenDemandProxy ? low : na, title="OTC BUY", text="OTC BUY", location=location.belowbar, style=shape.diamond, size=size.small, color=colHiddenDemand, textcolor=color.white)
+plotshape(hiddenSupplyProxy ? high : na, title="OTC SELL", text="OTC SELL", location=location.abovebar, style=shape.diamond, size=size.small, color=colHiddenSupply, textcolor=color.white)
+
+
+//=========================================================
+// BULL / BEAR PROBABILITY INSIDE CANDLES
+//=========================================================
+// Visual overlay only. It does not change candle OHLC values, alerts, zones, or trade logic.
+// FIXED: Current running candle is now drawn live. Confirmed bars are stored in history;
+// the live bar is deleted/recreated on every realtime update so it follows the running candle.
+// BUY / bullish candle: Bull segment is shown first from the top.
+// SELL / bearish candle: Bear segment is shown first from the top.
+var line[] probCandleLines = array.new_line()
+var line liveBullProbLine = na
+var line liveBearProbLine = na
+var label probBullTextLabel = na
+var label probBearTextLabel = na
+
+f_storeProbCandleLine(_ln) =>
+    array.push(probCandleLines, _ln)
+    maxStoredProbLines = probCandleHistory * 2
+    if array.size(probCandleLines) > maxStoredProbLines
+        oldProbLine = array.shift(probCandleLines)
+        line.delete(oldProbLine)
+
+// Remove old live-bar segment before drawing the updated running candle.
+if barstate.islast
+    if not na(liveBullProbLine)
+        line.delete(liveBullProbLine)
+        liveBullProbLine := na
+    if not na(liveBearProbLine)
+        line.delete(liveBearProbLine)
+        liveBearProbLine := na
+
+probCandleDrawAllowed = showProbInsideCandles and (not optimizeHeavyDrawings or bar_index >= last_bar_index - probCandleHistory or barstate.islast)
+if probCandleDrawAllowed
+    // Use full candle high-low length so the probability is visible across the candle length,
+    // including the currently running candle.
+    probCandleTop = high
+    probCandleBottom = low
+    probCandleHeightRaw = probCandleTop - probCandleBottom
+    probCandleHeight = math.max(probCandleHeightRaw, syminfo.mintick * 10)
+    probCandleMid = (probCandleTop + probCandleBottom) / 2.0
+    displayTop = probCandleHeightRaw > syminfo.mintick * 2 ? probCandleTop : probCandleMid + probCandleHeight / 2.0
+    displayBottom = probCandleHeightRaw > syminfo.mintick * 2 ? probCandleBottom : probCandleMid - probCandleHeight / 2.0
+
+    totalProbForCandle = bullProb + bearProb
+    bullRatioRaw = totalProbForCandle > 0 ? bullProb / totalProbForCandle : close >= open ? 0.70 : 0.30
+    bullRatio = math.min(math.max(bullRatioRaw, 0.0), 1.0)
+    bearRatio = 1.0 - bullRatio
+    displayHeight = displayTop - displayBottom
+
+    float bullTop = na
+    float bullBottom = na
+    float bearTop = na
+    float bearBottom = na
+
+    if close >= open
+        bullTop := displayTop
+        bullBottom := displayTop - displayHeight * bullRatio
+        bearTop := bullBottom
+        bearBottom := displayBottom
+    else
+        bearTop := displayTop
+        bearBottom := displayTop - displayHeight * bearRatio
+        bullTop := bearBottom
+        bullBottom := displayBottom
+
+    if barstate.isconfirmed
+        // Historical / closed candle: keep the probability segment in visible history.
+        if bullRatio > 0
+            bullSegLine = line.new(bar_index, bullBottom, bar_index, bullTop, xloc=xloc.bar_index, extend=extend.none, color=colBullCandleProb, width=probCandleWidth)
+            f_storeProbCandleLine(bullSegLine)
+        if bearRatio > 0
+            bearSegLine = line.new(bar_index, bearBottom, bar_index, bearTop, xloc=xloc.bar_index, extend=extend.none, color=colBearCandleProb, width=probCandleWidth)
+            f_storeProbCandleLine(bearSegLine)
+    else if barstate.islast
+        // Current running candle: draw live, but do not store in history until candle closes.
+        if bullRatio > 0
+            liveBullProbLine := line.new(bar_index, bullBottom, bar_index, bullTop, xloc=xloc.bar_index, extend=extend.none, color=colBullCandleProb, width=probCandleWidth)
+        if bearRatio > 0
+            liveBearProbLine := line.new(bar_index, bearBottom, bar_index, bearTop, xloc=xloc.bar_index, extend=extend.none, color=colBearCandleProb, width=probCandleWidth)
+
+if barstate.islast
+    if not na(probBullTextLabel)
+        label.delete(probBullTextLabel)
+    if not na(probBearTextLabel)
+        label.delete(probBearTextLabel)
+    if showProbInsideCandles and showProbTextInsideLatest
+        latestDisplayTop = high
+        latestDisplayBottom = low
+        latestDisplayHeightRaw = latestDisplayTop - latestDisplayBottom
+        latestDisplayHeightSafe = math.max(latestDisplayHeightRaw, syminfo.mintick * 10)
+        latestBodyMid = (latestDisplayTop + latestDisplayBottom) / 2.0
+        latestDisplayTop := latestDisplayHeightRaw > syminfo.mintick * 2 ? latestDisplayTop : latestBodyMid + latestDisplayHeightSafe / 2.0
+        latestDisplayBottom := latestDisplayHeightRaw > syminfo.mintick * 2 ? latestDisplayBottom : latestBodyMid - latestDisplayHeightSafe / 2.0
+
+        latestTotalProb = bullProb + bearProb
+        latestBullRatioRaw = latestTotalProb > 0 ? bullProb / latestTotalProb : close >= open ? 0.70 : 0.30
+        latestBullRatio = math.min(math.max(latestBullRatioRaw, 0.0), 1.0)
+        latestBearRatio = 1.0 - latestBullRatio
+        latestDisplayHeight = latestDisplayTop - latestDisplayBottom
+
+        float latestBullTop = na
+        float latestBullBottom = na
+        float latestBearTop = na
+        float latestBearBottom = na
+
+        if close >= open
+            latestBullTop := latestDisplayTop
+            latestBullBottom := latestDisplayTop - latestDisplayHeight * latestBullRatio
+            latestBearTop := latestBullBottom
+            latestBearBottom := latestDisplayBottom
+        else
+            latestBearTop := latestDisplayTop
+            latestBearBottom := latestDisplayTop - latestDisplayHeight * latestBearRatio
+            latestBullTop := latestBearBottom
+            latestBullBottom := latestDisplayBottom
+
+        bullMidY = (latestBullTop + latestBullBottom) / 2.0
+        bearMidY = (latestBearTop + latestBearBottom) / 2.0
+
+        if latestBullRatio > 0.12
+            probBullTextLabel := label.new(bar_index, bullMidY, "BU", xloc=xloc.bar_index, style=label.style_none, textcolor=colBullTextInCandle, size=size.tiny)
+        if latestBearRatio > 0.12
+            probBearTextLabel := label.new(bar_index, bearMidY, "BE", xloc=xloc.bar_index, style=label.style_none, textcolor=colBearTextInCandle, size=size.tiny)
+
+
+//=========================================================
+// ALERTS - PLOT LIMIT OPTIMIZED
+//=========================================================
+// TradingView counts every alertcondition() as one plot. The merged indicator was hitting
+// Runtime error RE10140 because it had too many separate alertconditions. This section
+// compresses all detailed alerts into a small set of unified alertconditions and uses
+// alert() calls for detailed messages. Create TradingView alert with "Any alert() function call".
+ampAnyBuyAlert = showAmpMacdPredictor and (ampStrongBuySignal or ampBuySignal or ampEarlyBuySignal)
+ampAnySellAlert = showAmpMacdPredictor and (ampStrongSellSignal or ampSellSignal or ampEarlySellSignal)
+ampAnyDivAlert = showAmpMacdPredictor and (ampBullDiv or ampBearDiv)
+safeAnyBuyAlert = safeBuySignal
+safeAnySellAlert = safeSellSignal
+zoneAnyAlert = nearDemand or nearSupply or touchDemand or touchSupply or breakDemand or breakSupply
+crossAnyAlert = goldenCross or deathCross or adxDmiAnyCross or (showAdxDmi and (diPlusCrossAboveDiMinus or diMinusCrossAboveDiPlus or adxCrossAboveTrendLevel))
+oiAnyAlert = (not na(ceOiChange) and ceOiChange != 0) or (not na(peOiChange) and peOiChange != 0)
+otcAnyAlert = hiddenDemandProxy or hiddenSupplyProxy
+strShockAnyAlert = demandStrShock or supplyStrShock
+
+unifiedBuyAlert = ampAnyBuyAlert or safeAnyBuyAlert or hiddenDemandProxy
+unifiedSellAlert = ampAnySellAlert or safeAnySellAlert or hiddenSupplyProxy
+unifiedMarketAlert = zoneAnyAlert or crossAnyAlert or oiAnyAlert or ampAnyDivAlert or strShockAnyAlert
+
+
+// Early AMP alert fires during the running candle for advance warning.
+if showAmpMacdPredictor and ampEarlyBuySignal
+    alert("JUNGLEEFROGS AMP EARLY BUY | " + syminfo.ticker + " " + timeframe.period + " | Bull=" + str.tostring(ampBullScore) + "/100 | MACD gap narrowing", alert.freq_once_per_bar)
+if showAmpMacdPredictor and ampEarlySellSignal
+    alert("JUNGLEEFROGS AMP EARLY SELL | " + syminfo.ticker + " " + timeframe.period + " | Bear=" + str.tostring(ampBearScore) + "/100 | MACD gap narrowing", alert.freq_once_per_bar)
+
+if barstate.isconfirmed and unifiedBuyAlert
+    buyAlertMsg = "JUNGLEEFROGS BUY ALERT | " + syminfo.ticker + " " + timeframe.period +
+         " | SafeBuy=" + str.tostring(safeBuySignal) +
+         " | AMP=" + ampFinalDecision +
+         " | BullProb=" + str.tostring(bullProb, "#") + "%" +
+         " | AMP Bull=" + str.tostring(ampBullScore) + "/100"
+    alert(buyAlertMsg, alert.freq_once_per_bar_close)
+
+if barstate.isconfirmed and unifiedSellAlert
+    sellAlertMsg = "JUNGLEEFROGS SELL ALERT | " + syminfo.ticker + " " + timeframe.period +
+         " | SafeSell=" + str.tostring(safeSellSignal) +
+         " | AMP=" + ampFinalDecision +
+         " | BearProb=" + str.tostring(bearProb, "#") + "%" +
+         " | AMP Bear=" + str.tostring(ampBearScore) + "/100"
+    alert(sellAlertMsg, alert.freq_once_per_bar_close)
+
+if barstate.isconfirmed and ampAnyDivAlert
+    divAlertMsg = "JUNGLEEFROGS AMP DIVERGENCE | " + syminfo.ticker + " " + timeframe.period +
+         " | BullDiv=" + str.tostring(ampBullDiv) +
+         " | BearDiv=" + str.tostring(ampBearDiv)
+    alert(divAlertMsg, alert.freq_once_per_bar_close)
+
+if barstate.isconfirmed and zoneAnyAlert
+    zoneAlertMsg = "JUNGLEEFROGS ZONE ALERT | " + syminfo.ticker + " " + timeframe.period +
+         " | NearDemand=" + str.tostring(nearDemand) +
+         " | NearSupply=" + str.tostring(nearSupply) +
+         " | TouchDemand=" + str.tostring(touchDemand) +
+         " | TouchSupply=" + str.tostring(touchSupply) +
+         " | BreakDemand=" + str.tostring(breakDemand) +
+         " | BreakSupply=" + str.tostring(breakSupply)
+    alert(zoneAlertMsg, alert.freq_once_per_bar_close)
+
+if barstate.isconfirmed and crossAnyAlert
+    crossAlertMsg = "JUNGLEEFROGS CROSS ALERT | " + syminfo.ticker + " " + timeframe.period +
+         " | Golden=" + str.tostring(goldenCross) +
+         " | Death=" + str.tostring(deathCross) +
+         " | ADX/DMI=" + str.tostring(adxDmiAnyCross) +
+         " | DI+Cross=" + str.tostring(diPlusCrossAboveDiMinus) +
+         " | DI-Cross=" + str.tostring(diMinusCrossAboveDiPlus)
+    alert(crossAlertMsg, alert.freq_once_per_bar_close)
+
+if barstate.isconfirmed and oiAnyAlert
+    oiAlertMsg = "JUNGLEEFROGS OI ALERT | " + syminfo.ticker + " " + timeframe.period +
+         " | CE Δ=" + str.tostring(ceOiChange, format.volume) +
+         " | PE Δ=" + str.tostring(peOiChange, format.volume)
+    alert(oiAlertMsg, alert.freq_once_per_bar_close)
+
+// Keep alertcondition count very small to stay under TradingView's 64 plot limit.
+alertcondition(unifiedBuyAlert, "JungleeFrogs Unified BUY", "JungleeFrogs BUY/OTC/AMP BUY alert on {{ticker}} {{interval}}")
+alertcondition(unifiedSellAlert, "JungleeFrogs Unified SELL", "JungleeFrogs SELL/OTC/AMP SELL alert on {{ticker}} {{interval}}")
+alertcondition(unifiedMarketAlert, "JungleeFrogs Unified Market Alert", "JungleeFrogs zone/cross/OI/divergence/STR alert on {{ticker}} {{interval}}")
+alertcondition(adxDmiAnyCross, "ADX/DMI Bell Buzz Cross", "ADX/DMI crossing detected on {{ticker}} {{interval}}. Configure TradingView alert sound as bell/temple bell for 10 seconds.")

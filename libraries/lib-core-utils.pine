@@ -1,0 +1,55 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+// Version: 1.0.0 (see CHANGELOG.md)
+
+//@version=6
+
+// @description Reusable helper functions shared across the indicators and strategies in this
+// toolkit: safe math, oscillator normalization, adaptive volatility bands, and simple candle
+// pattern checks. Publish this library on TradingView, then `import` it from other scripts
+// instead of copy-pasting these functions (see README.md for the exact import syntax).
+library("CoreUtils", overlay = true)
+
+// @function Divides two numbers, returning `fallback` instead of NaN/error when `denominator` is zero.
+// @param numerator Value to divide.
+// @param denominator Value to divide by.
+// @param fallback Value returned when `denominator` is zero. Default 0.0.
+// @returns numerator / denominator, or `fallback`.
+export f_safeDiv(float numerator, float denominator, float fallback = 0.0) =>
+    denominator == 0.0 ? fallback : numerator / denominator
+
+// @function Rescales a 0-100 oscillator (RSI, MFI, Stochastic, ...) to a -1..+1 range centered on 0.
+// @param source Oscillator value already in the 0-100 range.
+// @returns Value in the [-1, 1] range.
+export f_normalizeOscillator(float source) =>
+    (source - 50.0) / 50.0
+
+// @function Percent change between the current value and the value `length` bars ago.
+// @param current Current value.
+// @param length Number of bars to look back.
+// @returns Percent change, or 0.0 if the lookback value is zero/unavailable.
+export f_pctChange(float current, simple int length) =>
+    prior = current[length]
+    f_safeDiv(current - prior, math.abs(prior), 0.0) * 100.0
+
+// @function ATR-based band pair around a basis line, with a multiplier that widens automatically
+// when volatility (ATR relative to the basis) is elevated.
+// @param basis Center line for the bands (e.g. an EMA).
+// @param atrLength Lookback for `ta.atr`.
+// @param baseMult Multiplier applied under normal volatility.
+// @param volSensitivity How strongly rising relative ATR widens the bands. 0 disables adaptivity.
+// @returns [upper, lower] band values.
+export f_adaptiveBands(float basis, simple int atrLength, float baseMult, float volSensitivity) =>
+    atrValue = ta.atr(atrLength)
+    relativeAtr = f_safeDiv(atrValue, basis, 0.0)
+    adaptiveMult = baseMult * (1.0 + relativeAtr * volSensitivity)
+    upper = basis + atrValue * adaptiveMult
+    lower = basis - atrValue * adaptiveMult
+    [upper, lower]
+
+// @function Detects a simple two-bar bullish or bearish engulfing pattern on the current symbol.
+// @returns [bullishEngulfing, bearishEngulfing]
+export f_engulfing() =>
+    bullish = close[1] < open[1] and close > open and close >= open[1] and open <= close[1]
+    bearish = close[1] > open[1] and close < open and open >= close[1] and close <= open[1]
+    [bullish, bearish]

@@ -1,0 +1,46 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+
+// ============================================================================
+// Title:        Volume Flow Meter
+// Description:  Approximates buy/sell volume pressure from each bar's close
+//               position within its range, smooths the net flow, and flags
+//               relative-volume spikes.
+// Version:      1.0.0
+// ============================================================================
+
+//@version=6
+indicator("Volume Flow Meter", shorttitle = "VFM", overlay = false)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_CORE = "Volume Flow"
+
+maLen     = input.int(20, "Volume MA length", minval = 1, group = GRP_CORE)
+smoothLen = input.int(5, "Flow smoothing length", minval = 1, group = GRP_CORE)
+spikeMult = input.float(2.0, "Volume spike threshold (x average)", minval = 1.0, step = 0.1, group = GRP_CORE)
+
+// ---- Calculations -------------------------------------------------------------
+range_       = high - low
+buyFraction  = range_ != 0 ? (close - low) / range_ : 0.5
+sellFraction = 1.0 - buyFraction
+
+buyVolume  = volume * buyFraction
+sellVolume = volume * sellFraction
+netFlow    = buyVolume - sellVolume
+
+smoothedFlow = ta.ema(netFlow, smoothLen)
+volumeMa     = ta.sma(volume, maLen)
+relativeVolume = volumeMa != 0 ? volume / volumeMa : 1.0
+
+flowColor = smoothedFlow >= 0 ? color.new(color.teal, 0) : color.new(color.maroon, 0)
+
+// ---- Plots ----------------------------------------------------------------------
+plot(smoothedFlow, "Net volume flow", style = plot.style_columns, color = flowColor)
+hline(0, "Zero line", color = color.new(color.gray, 50))
+
+highVolumeSpike = relativeVolume >= spikeMult
+
+plotshape(highVolumeSpike, "Volume spike", style = shape.xcross, location = location.top, color = color.new(color.yellow, 0), size = size.tiny)
+
+// ---- Alerts -----------------------------------------------------------------------
+alertcondition(highVolumeSpike, "VFM: Volume spike", "Volume Flow Meter: volume spike on {{ticker}} ({{interval}})")

@@ -1,0 +1,45 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+
+// ============================================================================
+// Title:        Adaptive Volatility Bands
+// Description:  ATR-based bands around an EMA basis line, with a multiplier
+//               that widens automatically as relative ATR (ATR / basis) rises.
+// Version:      1.0.0
+// ============================================================================
+
+//@version=6
+indicator("Adaptive Volatility Bands", shorttitle = "AVB", overlay = true)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_CORE = "Bands"
+
+basisLen = input.int(20, "Basis EMA length", minval = 1, group = GRP_CORE)
+atrLen   = input.int(14, "ATR length", minval = 1, group = GRP_CORE)
+baseMult = input.float(2.0, "Base multiplier", minval = 0.1, step = 0.1, group = GRP_CORE)
+volSensitivity = input.float(3.0, "Volatility sensitivity", minval = 0.0, step = 0.5, group = GRP_CORE, tooltip = "Higher values widen the bands more aggressively when ATR is large relative to price.")
+
+// ---- Calculations -------------------------------------------------------------
+basis    = ta.ema(close, basisLen)
+atrValue = ta.atr(atrLen)
+relativeAtr  = basis != 0 ? atrValue / basis : 0.0
+adaptiveMult = baseMult * (1.0 + relativeAtr * volSensitivity)
+
+upper = basis + atrValue * adaptiveMult
+lower = basis - atrValue * adaptiveMult
+
+// ---- Plots ----------------------------------------------------------------------
+pBasis = plot(basis, "Basis", color = color.new(color.orange, 0))
+pUpper = plot(upper, "Upper band", color = color.new(color.teal, 30))
+pLower = plot(lower, "Lower band", color = color.new(color.maroon, 30))
+fill(pUpper, pLower, color = color.new(color.blue, 92))
+
+priceAboveUpper = close > upper
+priceBelowLower = close < lower
+
+plotshape(priceAboveUpper and not priceAboveUpper[1], "Breakout above", style = shape.circle, location = location.abovebar, color = color.new(color.teal, 0), size = size.tiny)
+plotshape(priceBelowLower and not priceBelowLower[1], "Breakdown below", style = shape.circle, location = location.belowbar, color = color.new(color.maroon, 0), size = size.tiny)
+
+// ---- Alerts -----------------------------------------------------------------------
+alertcondition(priceAboveUpper and not priceAboveUpper[1], "AVB: Breakout above upper band", "Adaptive Volatility Bands: breakout on {{ticker}} ({{interval}})")
+alertcondition(priceBelowLower and not priceBelowLower[1], "AVB: Breakdown below lower band", "Adaptive Volatility Bands: breakdown on {{ticker}} ({{interval}})")

@@ -1,0 +1,5 @@
+# Normalize line endings across platforms; keep Pine sources LF so diffs
+# stay clean regardless of contributor OS.
+* text=auto eol=lf
+*.pine text eol=lf
+*.md text eol=lf

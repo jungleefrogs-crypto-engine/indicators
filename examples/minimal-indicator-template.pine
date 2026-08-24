@@ -1,0 +1,34 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © <your-tradingview-username>
+
+// ============================================================================
+// Title:        <Indicator Name>
+// Description:  <One or two sentence description of what this measures/shows.>
+// Version:      1.0.0
+// Changelog:    See CHANGELOG.md
+// ============================================================================
+//
+// Copy this file as a starting point for a new script. Keep the section
+// comments (Inputs / Calculations / Plots / Alerts) and the input-group
+// convention so every script in the project reads the same way.
+// See docs/STYLE_GUIDE.md for the full conventions.
+
+//@version=6
+indicator("My New Indicator", shorttitle = "MNI", overlay = true)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_CORE = "Core Settings"
+var string GRP_DISP = "Display"
+
+length     = input.int(14, "Length", minval = 1, group = GRP_CORE)
+srcInput   = input.source(close, "Source", group = GRP_CORE)
+showSignal = input.bool(true, "Show signal line", group = GRP_DISP)
+
+// ---- Calculations -------------------------------------------------------------
+value = ta.sma(srcInput, length)
+
+// ---- Plots ----------------------------------------------------------------------
+plot(showSignal ? value : na, "Value", color = color.new(color.blue, 0))
+
+// ---- Alerts -----------------------------------------------------------------------
+alertcondition(ta.crossover(srcInput, value), "Cross above", "{{ticker}} crossed above the indicator value")

@@ -1,0 +1,60 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+
+// ============================================================================
+// Title:        EMA Trend Cross Strategy
+// Description:  Enters on a fast/slow EMA cross filtered by a baseline EMA
+//               trend filter, with an optional ATR stop-loss and R-multiple
+//               take-profit.
+// Version:      1.0.0
+// ============================================================================
+
+//@version=6
+strategy("EMA Trend Cross Strategy", shorttitle = "EMA-XS", overlay = true,
+     initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 10,
+     commission_type = strategy.commission.percent, commission_value = 0.05)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_MA   = "Moving Averages"
+var string GRP_FILT = "Trend Filter"
+var string GRP_RISK = "Risk Management"
+
+fastLen = input.int(9, "Fast EMA length", minval = 1, group = GRP_MA)
+slowLen = input.int(21, "Slow EMA length", minval = 1, group = GRP_MA)
+
+useTrendFilter = input.bool(true, "Require price above/below baseline EMA", group = GRP_FILT)
+baseLen        = input.int(200, "Baseline EMA length", minval = 1, group = GRP_FILT)
+
+useStop   = input.bool(true, "Use ATR stop-loss / take-profit", group = GRP_RISK)
+atrLen    = input.int(14, "ATR length", minval = 1, group = GRP_RISK)
+atrMult   = input.float(2.5, "ATR stop multiplier", minval = 0.1, step = 0.1, group = GRP_RISK)
+rMultiple = input.float(2.0, "Reward:risk multiple for take-profit", minval = 0.1, step = 0.1, group = GRP_RISK)
+
+// ---- Calculations -------------------------------------------------------------
+fastEma  = ta.ema(close, fastLen)
+slowEma  = ta.ema(close, slowLen)
+baseEma  = ta.ema(close, baseLen)
+atrValue = ta.atr(atrLen)
+
+longCondition  = ta.crossover(fastEma, slowEma) and (not useTrendFilter or close > baseEma)
+shortCondition = ta.crossunder(fastEma, slowEma) and (not useTrendFilter or close < baseEma)
+
+// ---- Orders ---------------------------------------------------------------------
+if longCondition
+    strategy.entry("Long", strategy.long)
+    if useStop
+        longStop  = close - atrValue * atrMult
+        longLimit = close + atrValue * atrMult * rMultiple
+        strategy.exit("Long exit", from_entry = "Long", stop = longStop, limit = longLimit)
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+    if useStop
+        shortStop  = close + atrValue * atrMult
+        shortLimit = close - atrValue * atrMult * rMultiple
+        strategy.exit("Short exit", from_entry = "Short", stop = shortStop, limit = shortLimit)
+
+// ---- Plots ----------------------------------------------------------------------
+plot(fastEma, "Fast EMA", color = color.new(color.aqua, 0))
+plot(slowEma, "Slow EMA", color = color.new(color.orange, 0))
+plot(baseEma, "Baseline EMA", color = color.new(color.gray, 40))

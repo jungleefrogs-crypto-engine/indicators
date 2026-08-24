@@ -1,0 +1,21 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © <your-tradingview-username>
+// Version: 1.0.0
+
+//@version=6
+
+// Copy this file as a starting point for a new library. Every exported
+// function needs its own @function/@param/@returns block directly above
+// it — TradingView renders these as the published library's documentation.
+// See docs/STYLE_GUIDE.md for the full conventions, and README.md for the
+// exact `import` syntax once this is published on TradingView.
+
+// @description <What this library provides, and why scripts should import it
+// instead of copy-pasting the functions.>
+library("MyLibrary", overlay = true)
+
+// @function <One sentence describing what the function does.>
+// @param value <What this parameter is.>
+// @returns <What is returned.>
+export f_myFunction(float value) =>
+    value

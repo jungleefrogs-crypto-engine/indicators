@@ -1,0 +1,67 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+
+// ============================================================================
+// Title:        Trend Strength Suite
+// Description:  Three-EMA trend structure (fast/slow/baseline) with an ADX-based
+//               strength read-out and a small on-chart dashboard.
+// Version:      1.0.0
+// ============================================================================
+
+//@version=6
+indicator("Trend Strength Suite", shorttitle = "TSS", overlay = true, max_labels_count = 50)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_MA   = "Moving Averages"
+var string GRP_ADX  = "Trend Strength (ADX)"
+var string GRP_DISP = "Display"
+
+fastLen = input.int(21, "Fast EMA length", minval = 1, group = GRP_MA)
+slowLen = input.int(55, "Slow EMA length", minval = 1, group = GRP_MA)
+baseLen = input.int(200, "Baseline EMA length", minval = 1, group = GRP_MA)
+
+adxLen         = input.int(14, "ADX length", minval = 1, group = GRP_ADX)
+adxSmooth      = input.int(14, "ADX smoothing", minval = 1, group = GRP_ADX)
+adxStrongLevel = input.float(25.0, "Strong-trend threshold", minval = 0, group = GRP_ADX)
+
+showRibbonFill = input.bool(true, "Fill fast/slow ribbon", group = GRP_DISP)
+showDashboard  = input.bool(true, "Show trend dashboard", group = GRP_DISP)
+
+// ---- Calculations -------------------------------------------------------------
+fastEma = ta.ema(close, fastLen)
+slowEma = ta.ema(close, slowLen)
+baseEma = ta.ema(close, baseLen)
+
+bullBias = fastEma > slowEma and close > baseEma
+bearBias = fastEma < slowEma and close < baseEma
+
+[diplus, diminus, adx] = ta.dmi(adxLen, adxSmooth)
+
+trendStrong = adx >= adxStrongLevel
+trendLabel = trendStrong and bullBias ? "Strong Uptrend" :
+             trendStrong and bearBias ? "Strong Downtrend" :
+             bullBias ? "Weak Uptrend" :
+             bearBias ? "Weak Downtrend" : "Ranging"
+
+// ---- Plots ----------------------------------------------------------------------
+pFast = plot(fastEma, "Fast EMA", color = color.new(color.aqua, 0), linewidth = 2)
+pSlow = plot(slowEma, "Slow EMA", color = color.new(color.orange, 0), linewidth = 2)
+plot(baseEma, "Baseline EMA", color = color.new(color.gray, 40), linewidth = 1)
+
+ribbonColor = bullBias ? color.new(color.teal, 85) : bearBias ? color.new(color.maroon, 85) : color.new(color.gray, 90)
+fill(pFast, pSlow, color = showRibbonFill ? ribbonColor : na)
+
+// ---- Dashboard -----------------------------------------------------------------
+var table dash = table.new(position.top_right, 2, 2, border_width = 1)
+if showDashboard
+    table.cell(dash, 0, 0, "Trend", text_color = color.white, bgcolor = color.new(color.black, 20))
+    table.cell(dash, 1, 0, trendLabel, text_color = color.white, bgcolor = color.new(color.black, 20))
+    table.cell(dash, 0, 1, "ADX", text_color = color.white, bgcolor = color.new(color.black, 20))
+    table.cell(dash, 1, 1, str.tostring(adx, "#.##"), text_color = color.white, bgcolor = color.new(color.black, 20))
+
+// ---- Alerts -----------------------------------------------------------------------
+bullCross = ta.crossover(fastEma, slowEma)
+bearCross = ta.crossunder(fastEma, slowEma)
+
+alertcondition(bullCross, title = "TSS: Fast EMA crossed above Slow EMA", message = "Trend Strength Suite: bullish EMA cross on {{ticker}} ({{interval}})")
+alertcondition(bearCross, title = "TSS: Fast EMA crossed below Slow EMA", message = "Trend Strength Suite: bearish EMA cross on {{ticker}} ({{interval}})")

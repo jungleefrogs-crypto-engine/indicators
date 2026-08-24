@@ -1,0 +1,59 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+
+// ============================================================================
+// Title:        Momentum Oscillator Pro
+// Description:  Blends RSI and a smoothed Stochastic %K into a single momentum
+//               line with a signal EMA, histogram, and overbought/oversold zones.
+// Version:      1.0.0
+// ============================================================================
+
+//@version=6
+indicator("Momentum Oscillator Pro", shorttitle = "MOP", overlay = false)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_CORE  = "Momentum"
+var string GRP_ZONES = "Zones"
+var string GRP_SIG   = "Signal"
+
+rsiLen      = input.int(14, "RSI length", minval = 1, group = GRP_CORE)
+stochLen    = input.int(14, "Stochastic %K length", minval = 1, group = GRP_CORE)
+stochSmooth = input.int(3, "Stochastic smoothing", minval = 1, group = GRP_CORE)
+blendWeight = input.float(0.5, "RSI weight (0 = all Stoch, 1 = all RSI)", minval = 0.0, maxval = 1.0, step = 0.05, group = GRP_CORE)
+
+obLevel = input.float(70, "Overbought level", group = GRP_ZONES)
+osLevel = input.float(30, "Oversold level", group = GRP_ZONES)
+
+sigLen = input.int(9, "Signal EMA length", minval = 1, group = GRP_SIG)
+
+// ---- Calculations -------------------------------------------------------------
+rsiValue = ta.rsi(close, rsiLen)
+stochRaw = ta.stoch(close, high, low, stochLen)
+stochK   = ta.sma(stochRaw, stochSmooth)
+
+momentum = blendWeight * rsiValue + (1.0 - blendWeight) * stochK
+signal   = ta.ema(momentum, sigLen)
+hist     = momentum - signal
+
+histColor = hist >= 0 ? (hist > hist[1] ? color.new(color.teal, 0) : color.new(color.teal, 50)) : (hist < hist[1] ? color.new(color.maroon, 0) : color.new(color.maroon, 50))
+
+// ---- Plots ----------------------------------------------------------------------
+hline(obLevel, "Overbought", color = color.new(color.red, 60))
+hline(50, "Midline", color = color.new(color.gray, 70))
+hline(osLevel, "Oversold", color = color.new(color.green, 60))
+
+bgcolor(momentum >= obLevel ? color.new(color.red, 90) : momentum <= osLevel ? color.new(color.green, 90) : na)
+
+plot(momentum, "Momentum", color = color.new(color.fuchsia, 0), linewidth = 2)
+plot(signal, "Signal", color = color.new(color.gray, 0), linewidth = 1)
+plot(hist, "Momentum - Signal", style = plot.style_columns, color = histColor)
+
+bullCross = ta.crossover(momentum, signal)
+bearCross = ta.crossunder(momentum, signal)
+
+plotshape(bullCross and momentum <= osLevel, "Bullish signal", style = shape.triangleup, location = location.bottom, color = color.new(color.green, 0), size = size.tiny)
+plotshape(bearCross and momentum >= obLevel, "Bearish signal", style = shape.triangledown, location = location.top, color = color.new(color.red, 0), size = size.tiny)
+
+// ---- Alerts -----------------------------------------------------------------------
+alertcondition(bullCross, "MOP: Bullish momentum cross", "Momentum Oscillator Pro: bullish cross on {{ticker}} ({{interval}})")
+alertcondition(bearCross, "MOP: Bearish momentum cross", "Momentum Oscillator Pro: bearish cross on {{ticker}} ({{interval}})")

@@ -1,0 +1,56 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+
+// ============================================================================
+// Title:        Swing Structure Mapper
+// Description:  Labels swing highs/lows as HH/LH/HL/LL using pivot detection,
+//               and flags breaks of structure (BOS) when price crosses the
+//               most recent confirmed swing point.
+// Version:      1.0.0
+// ============================================================================
+
+//@version=6
+indicator("Swing Structure Mapper", shorttitle = "SSM", overlay = true, max_labels_count = 200, max_lines_count = 200)
+
+// ---- Inputs -----------------------------------------------------------------
+var string GRP_CORE = "Swing Detection"
+
+leftBars   = input.int(5, "Pivot left bars", minval = 1, group = GRP_CORE)
+rightBars  = input.int(5, "Pivot right bars", minval = 1, group = GRP_CORE)
+showLabels = input.bool(true, "Show HH/LL/HL/LH labels", group = GRP_CORE)
+
+// ---- Calculations -------------------------------------------------------------
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow  = ta.pivotlow(low, leftBars, rightBars)
+
+var float lastSwingHigh = na
+var float prevSwingHigh = na
+var float lastSwingLow  = na
+var float prevSwingLow  = na
+
+if not na(pivotHigh)
+    prevSwingHigh := lastSwingHigh
+    lastSwingHigh := pivotHigh
+    highLabelText  = na(prevSwingHigh) ? "H" : pivotHigh > prevSwingHigh ? "HH" : "LH"
+    highLabelColor = highLabelText == "HH" ? color.new(color.teal, 0) : color.new(color.maroon, 0)
+    if showLabels
+        label.new(bar_index - rightBars, pivotHigh, highLabelText, style = label.style_label_down, color = highLabelColor, textcolor = color.white, size = size.tiny)
+
+if not na(pivotLow)
+    prevSwingLow := lastSwingLow
+    lastSwingLow := pivotLow
+    lowLabelText  = na(prevSwingLow) ? "L" : pivotLow < prevSwingLow ? "LL" : "HL"
+    lowLabelColor = lowLabelText == "LL" ? color.new(color.maroon, 0) : color.new(color.teal, 0)
+    if showLabels
+        label.new(bar_index - rightBars, pivotLow, lowLabelText, style = label.style_label_up, color = lowLabelColor, textcolor = color.white, size = size.tiny)
+
+bosUp   = not na(lastSwingHigh) and ta.crossover(close, lastSwingHigh)
+bosDown = not na(lastSwingLow) and ta.crossunder(close, lastSwingLow)
+
+// ---- Plots ----------------------------------------------------------------------
+plotshape(bosUp, "Break of structure (up)", style = shape.labelup, location = location.belowbar, color = color.new(color.blue, 0), textcolor = color.white, text = "BOS+", size = size.tiny)
+plotshape(bosDown, "Break of structure (down)", style = shape.labeldown, location = location.abovebar, color = color.new(color.purple, 0), textcolor = color.white, text = "BOS-", size = size.tiny)
+
+// ---- Alerts -----------------------------------------------------------------------
+alertcondition(bosUp, "SSM: Bullish break of structure", "Swing Structure Mapper: bullish BOS on {{ticker}} ({{interval}})")
+alertcondition(bosDown, "SSM: Bearish break of structure", "Swing Structure Mapper: bearish BOS on {{ticker}} ({{interval}})")
