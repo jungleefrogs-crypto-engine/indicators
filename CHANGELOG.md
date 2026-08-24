@@ -76,6 +76,15 @@ file records what changed and when, file by file.
 ### Added
 
 - `indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine`:
+  - "Table Font Size" input (Tiny/Small/Normal/Large/Huge, default Normal):
+    controls all three tables (AMP-MTF, PRESSURE, ADX/DMI) together. Row
+    labels render one size step below their value cells, same relative
+    sizing as before, just adjustable together instead of fixed.
+  - "Dashboard Row Visibility" input group: one checkbox per row across the
+    AMP-MTF table, PRESSURE table, and ADX/DMI panel (28 total), all
+    defaulting to true. Unticking a row removes it entirely and the table
+    compacts around the gap - rows are drawn via a running row-index counter
+    per table instead of a fixed index, so hidden rows leave no blank space.
   - "Momentum" row (AMP-MTF table): Rate of Change over `momentumRocLen` bars
     (default 10), e.g. "+1.8% ▲" in green, "-0.9% ▼" in red on a yellow
     background - value and arrow always share one color/direction.

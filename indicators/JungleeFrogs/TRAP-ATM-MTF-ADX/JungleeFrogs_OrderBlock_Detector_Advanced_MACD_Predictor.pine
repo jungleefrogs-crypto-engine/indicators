@@ -22,6 +22,55 @@ showProbInsideCandles = input.bool(true, "Show Bull/Bear Probability Inside Cand
 showAdxDmiBellBuzz = input.bool(true, "ADX/DMI Cross Bell Buzz Alert", group=groupMain)
 showAmpMacdPredictor = input.bool(true, "Show Advanced MACD Predictor", group=groupMain)
 showPressurePriority = input.bool(true, "Show Demand/Supply Pressure Priority", group=groupMain)
+tableFontSizeInput = input.string("Normal", "Table Font Size (AMP-MTF / PRESSURE / ADX-DMI)", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=groupMain)
+
+// Row-label cells (e.g. "Regime", "ADX") render one size step below the value
+// cells (e.g. "BULLISH", "20.12") in every table, same as the original fixed
+// small/normal pairing - this just moves both together with one dropdown.
+f_table_value_size(_s) =>
+    _s == "Tiny" ? size.tiny : _s == "Small" ? size.small : _s == "Normal" ? size.normal : _s == "Large" ? size.large : size.huge
+f_table_label_size(_s) =>
+    _s == "Tiny" ? size.tiny : _s == "Small" ? size.tiny : _s == "Normal" ? size.small : _s == "Large" ? size.normal : size.large
+tableValueSize = f_table_value_size(tableFontSizeInput)
+tableLabelSize = f_table_label_size(tableFontSizeInput)
+
+//=========================================================
+// DASHBOARD ROW VISIBILITY
+//=========================================================
+// One checkbox per table row. Unticking a row removes it entirely - the table
+// compacts around the gap - rather than leaving it blank. All default to true.
+groupRowVis = "Dashboard Row Visibility"
+// AMP-MTF table (left side)
+showRowRegime     = input.bool(true, "AMP-MTF: Regime (200EMA)", group=groupRowVis)
+showRowRegimeTf   = input.bool(true, "AMP-MTF: Regime TF", group=groupRowVis)
+showRowMtfPower   = input.bool(true, "AMP-MTF: MTF Power", group=groupRowVis)
+showRowFollowTf   = input.bool(true, "AMP-MTF: Follow TF", group=groupRowVis)
+showRowTrapRisk   = input.bool(true, "AMP-MTF: Trap Risk", group=groupRowVis)
+showRowTradeMode  = input.bool(true, "AMP-MTF: Trade Mode", group=groupRowVis)
+showRowTrigger    = input.bool(true, "AMP-MTF: Trigger", group=groupRowVis)
+showRowInvalid    = input.bool(true, "AMP-MTF: Invalid", group=groupRowVis)
+showRowAdx        = input.bool(true, "AMP-MTF: ADX", group=groupRowVis)
+showRowScore      = input.bool(true, "AMP-MTF: Score", group=groupRowVis)
+showRowConsensus  = input.bool(true, "AMP-MTF: Consensus", group=groupRowVis)
+showRowMomentum   = input.bool(true, "AMP-MTF: Momentum", group=groupRowVis)
+// PRESSURE table (right side)
+showRowPriority   = input.bool(true, "PRESSURE: Priority", group=groupRowVis)
+showRowPressure   = input.bool(true, "PRESSURE: Pressure", group=groupRowVis)
+showRowLead       = input.bool(true, "PRESSURE: Lead", group=groupRowVis)
+showRowAdvance    = input.bool(true, "PRESSURE: Advance", group=groupRowVis)
+showRowDivergence = input.bool(true, "PRESSURE: Divergence", group=groupRowVis)
+showRowQuickRisk  = input.bool(true, "PRESSURE: Quick Risk", group=groupRowVis)
+showRowAction     = input.bool(true, "PRESSURE: Action", group=groupRowVis)
+showRowLevels     = input.bool(true, "PRESSURE: SL/T1/Exit", group=groupRowVis)
+showRowBullScore  = input.bool(true, "PRESSURE: Bull Score", group=groupRowVis)
+showRowBearScore  = input.bool(true, "PRESSURE: Bear Score", group=groupRowVis)
+showRowCeIv       = input.bool(true, "PRESSURE: CE IV", group=groupRowVis)
+showRowPeIv       = input.bool(true, "PRESSURE: PE IV", group=groupRowVis)
+// ADX / DMI panel
+showRowAdxDmiAdx      = input.bool(true, "ADX/DMI: ADX", group=groupRowVis)
+showRowAdxDmiDiPlus   = input.bool(true, "ADX/DMI: DI+", group=groupRowVis)
+showRowAdxDmiDiMinus  = input.bool(true, "ADX/DMI: DI-", group=groupRowVis)
+showRowAdxDmiStrength = input.bool(true, "ADX/DMI: STRENGTH", group=groupRowVis)
 
 //=========================================================
 // COLORS
@@ -1312,21 +1361,32 @@ if barstate.islast and showAdxDmi
     table.clear(adxDmiTable, 0, 0, 1, 5)
     adxReady = not na(adxVal) and not na(diPlus) and not na(diMinus)
     headerBg = adxReady ? (diPlus >= diMinus ? color.new(color.green, 0) : color.new(color.red, 0)) : color.new(color.gray, 0)
-    table.cell(adxDmiTable, 0, 0, "ADX / DMI", text_color=color.white, bgcolor=headerBg, text_size=size.small)
-    table.cell(adxDmiTable, 1, 0, adxReady ? diBiasText : "CALCULATING", text_color=color.white, bgcolor=headerBg, text_size=size.normal)
-    table.cell(adxDmiTable, 0, 1, "ADX", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(adxDmiTable, 1, 1, adxReady ? str.tostring(adxVal, "#.##") : "WAIT", text_color=colAdx, bgcolor=color.new(color.black, 0), text_size=size.normal)
-    table.cell(adxDmiTable, 0, 2, "DI+", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(adxDmiTable, 1, 2, adxReady ? str.tostring(diPlus, "#.##") : "WAIT", text_color=colDiPlus, bgcolor=color.new(color.black, 0), text_size=size.normal)
-    table.cell(adxDmiTable, 0, 3, "DI-", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(adxDmiTable, 1, 3, adxReady ? str.tostring(diMinus, "#.##") : "WAIT", text_color=colDiMinus, bgcolor=colRedTextCellBg, text_size=size.normal)
-    table.cell(adxDmiTable, 0, 4, "STRENGTH", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(adxDmiTable, 1, 4, adxReady ? adxStrengthText : "WAIT", text_color=color.white, bgcolor=adxReady and adxVal >= adxStrongLevel ? color.new(color.orange, 0) : color.new(color.gray, 30), text_size=size.normal)
+    table.cell(adxDmiTable, 0, 0, "ADX / DMI", text_color=color.white, bgcolor=headerBg, text_size=tableLabelSize)
+    table.cell(adxDmiTable, 1, 0, adxReady ? diBiasText : "CALCULATING", text_color=color.white, bgcolor=headerBg, text_size=tableValueSize)
+    // Running row counter: an unticked row is skipped entirely (table compacts),
+    // instead of leaving a blank gap at a fixed index.
+    int adxDmiRow = 1
+    if showRowAdxDmiAdx
+        table.cell(adxDmiTable, 0, adxDmiRow, "ADX", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(adxDmiTable, 1, adxDmiRow, adxReady ? str.tostring(adxVal, "#.##") : "WAIT", text_color=colAdx, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        adxDmiRow := adxDmiRow + 1
+    if showRowAdxDmiDiPlus
+        table.cell(adxDmiTable, 0, adxDmiRow, "DI+", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(adxDmiTable, 1, adxDmiRow, adxReady ? str.tostring(diPlus, "#.##") : "WAIT", text_color=colDiPlus, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        adxDmiRow := adxDmiRow + 1
+    if showRowAdxDmiDiMinus
+        table.cell(adxDmiTable, 0, adxDmiRow, "DI-", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(adxDmiTable, 1, adxDmiRow, adxReady ? str.tostring(diMinus, "#.##") : "WAIT", text_color=colDiMinus, bgcolor=colRedTextCellBg, text_size=tableValueSize)
+        adxDmiRow := adxDmiRow + 1
+    if showRowAdxDmiStrength
+        table.cell(adxDmiTable, 0, adxDmiRow, "STRENGTH", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(adxDmiTable, 1, adxDmiRow, adxReady ? adxStrengthText : "WAIT", text_color=color.white, bgcolor=adxReady and adxVal >= adxStrongLevel ? color.new(color.orange, 0) : color.new(color.gray, 30), text_size=tableValueSize)
+        adxDmiRow := adxDmiRow + 1
     footerBg = adxDmiBuzzActive ? colAdxDmiBellBuzz : color.new(color.black, 100)
     footerLeft = adxDmiBuzzActive ? adxDmiBuzzFrameText + " BUZZ" : ""
     footerRight = adxDmiBuzzActive ? adxDmiBuzzCrossText : ""
-    table.cell(adxDmiTable, 0, 5, footerLeft, text_color=color.white, bgcolor=footerBg, text_size=size.small)
-    table.cell(adxDmiTable, 1, 5, footerRight, text_color=color.white, bgcolor=footerBg, text_size=size.normal)
+    table.cell(adxDmiTable, 0, adxDmiRow, footerLeft, text_color=color.white, bgcolor=footerBg, text_size=tableLabelSize)
+    table.cell(adxDmiTable, 1, adxDmiRow, footerRight, text_color=color.white, bgcolor=footerBg, text_size=tableValueSize)
 
 if barstate.islast and not showAdxDmi
     table.clear(adxDmiTable, 0, 0, 1, 5)
@@ -1624,69 +1684,123 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
     bearScoreBg = redTextBg
 
     // LEFT COMPACT TABLE: Market state / timing / trap / trigger.
-    table.cell(ampDashTable, 0, 0, "AMP-MTF", text_color=color.white, bgcolor=ampDecisionBg, text_size=size.small)
-    table.cell(ampDashTable, 1, 0, ampDisplayAction, text_color=color.white, bgcolor=ampDecisionBg, text_size=size.normal)
-    // Labeled with its timeframe so it doesn't read as a same-weight, live directional
-    // call next to ADX/DMI - Regime is a slow 200 EMA filter, not a short-term signal,
-    // and it disagreeing with ADX/DMI during a fast move is expected, not a bug.
-    table.cell(ampDashTable, 0, 1, "Regime (200EMA)", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 1, ampRegimeText, text_color=ampRegimeText == "BULLISH" ? color.lime : ampRegimeText == "BEARISH" ? color.red : color.yellow, bgcolor=ampRegimeBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 2, "Regime TF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 2, ampMtfText, text_color=ampMacdRegimeTf > ampSigRegimeTf ? color.lime : color.red, bgcolor=ampMtfBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 3, "MTF Power", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 3, mtfPowerText, text_color=mtfPowerColor, bgcolor=mtfPowerBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 4, "Follow TF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 4, ampFollowTfText, text_color=ampFollowTfColor, bgcolor=color.new(color.black, 0), text_size=size.normal)
-    table.cell(ampDashTable, 0, 5, "Trap Risk", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 5, trapRiskText, text_color=trapRiskColor, bgcolor=trapRiskBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 6, "Trade Mode", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 6, tradeModeText, text_color=tradeModeColor, bgcolor=tradeModeBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 7, "Trigger", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 7, advanceTriggerText, text_color=advanceTriggerColor, bgcolor=advanceTriggerBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 8, "Invalid", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 8, advanceInvalidText, text_color=advanceInvalidColor, bgcolor=color.new(color.black, 0), text_size=size.normal)
-    table.cell(ampDashTable, 0, 9, "ADX", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 9, str.tostring(adxVal, "#.##"), text_color=adxVal > adxTrendLevel ? color.yellow : color.gray, bgcolor=color.new(color.black, 0), text_size=size.normal)
-    table.cell(ampDashTable, 0, 10, "Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 10, ampScoreText, text_color=ampScoreColor, bgcolor=ampScoreBg, text_size=size.normal)
-
-    table.cell(ampDashTable, 0, 11, "Consensus", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 11, consensusText, text_color=consensusColor, bgcolor=consensusColor == color.red ? redTextBg : darkCellBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 12, "Momentum", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 12, momentumRocText, text_color=momentumRocColor, bgcolor=momentumRoc < 0 ? redTextBg : darkCellBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 0, "AMP-MTF", text_color=color.white, bgcolor=ampDecisionBg, text_size=tableLabelSize)
+    table.cell(ampDashTable, 1, 0, ampDisplayAction, text_color=color.white, bgcolor=ampDecisionBg, text_size=tableValueSize)
+    // Running row counter: an unticked row (see Dashboard Row Visibility group) is
+    // skipped entirely so the table compacts around the gap, instead of a fixed
+    // index per row leaving a blank space where a hidden row used to be.
+    int leftRow = 1
+    if showRowRegime
+        // Labeled with its timeframe so it doesn't read as a same-weight, live directional
+        // call next to ADX/DMI - Regime is a slow 200 EMA filter, not a short-term signal,
+        // and it disagreeing with ADX/DMI during a fast move is expected, not a bug.
+        table.cell(ampDashTable, 0, leftRow, "Regime (200EMA)", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, ampRegimeText, text_color=ampRegimeText == "BULLISH" ? color.lime : ampRegimeText == "BEARISH" ? color.red : color.yellow, bgcolor=ampRegimeBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowRegimeTf
+        table.cell(ampDashTable, 0, leftRow, "Regime TF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, ampMtfText, text_color=ampMacdRegimeTf > ampSigRegimeTf ? color.lime : color.red, bgcolor=ampMtfBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowMtfPower
+        table.cell(ampDashTable, 0, leftRow, "MTF Power", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, mtfPowerText, text_color=mtfPowerColor, bgcolor=mtfPowerBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowFollowTf
+        table.cell(ampDashTable, 0, leftRow, "Follow TF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, ampFollowTfText, text_color=ampFollowTfColor, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowTrapRisk
+        table.cell(ampDashTable, 0, leftRow, "Trap Risk", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, trapRiskText, text_color=trapRiskColor, bgcolor=trapRiskBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowTradeMode
+        table.cell(ampDashTable, 0, leftRow, "Trade Mode", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, tradeModeText, text_color=tradeModeColor, bgcolor=tradeModeBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowTrigger
+        table.cell(ampDashTable, 0, leftRow, "Trigger", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, advanceTriggerText, text_color=advanceTriggerColor, bgcolor=advanceTriggerBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowInvalid
+        table.cell(ampDashTable, 0, leftRow, "Invalid", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, advanceInvalidText, text_color=advanceInvalidColor, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowAdx
+        table.cell(ampDashTable, 0, leftRow, "ADX", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, str.tostring(adxVal, "#.##"), text_color=adxVal > adxTrendLevel ? color.yellow : color.gray, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowScore
+        table.cell(ampDashTable, 0, leftRow, "Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, ampScoreText, text_color=ampScoreColor, bgcolor=ampScoreBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowConsensus
+        table.cell(ampDashTable, 0, leftRow, "Consensus", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, consensusText, text_color=consensusColor, bgcolor=consensusColor == color.red ? redTextBg : darkCellBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
+    if showRowMomentum
+        table.cell(ampDashTable, 0, leftRow, "Momentum", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 1, leftRow, momentumRocText, text_color=momentumRocColor, bgcolor=momentumRoc < 0 ? redTextBg : darkCellBg, text_size=tableValueSize)
+        leftRow := leftRow + 1
 
     // Spacer column to visually split the dashboard into two side-by-side parts.
+    // Always filled to the table's full height regardless of how many rows above
+    // are actually visible, so the outer border/column stays a consistent size.
     for r = 0 to 12
         table.cell(ampDashTable, 2, r, " ", text_color=color.new(color.white, 100), bgcolor=spacerBg, text_size=size.tiny)
 
     // RIGHT COMPACT TABLE: Pressure / advance / risk / action / levels.
     pressureHeaderBg = pressureAdvanceTrapped ? color.new(color.red, 0) : pressureBuyAdvance ? color.new(color.green, 0) : pressureSellAdvance ? color.new(color.red, 0) : color.new(color.orange, 0)
-    table.cell(ampDashTable, 3, 0, "PRESSURE", text_color=color.white, bgcolor=pressureHeaderBg, text_size=size.small)
-    table.cell(ampDashTable, 4, 0, pressureAdvanceDisplayText, text_color=color.white, bgcolor=pressureHeaderBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 1, "Priority", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 1, pressurePriorityText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 2, "Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 2, pressureScoreText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 3, "Lead", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 3, pressureLeadText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 4, "Advance", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 4, pressureAdvanceDisplayText, text_color=pressureAdvanceDisplayColor, bgcolor=pressureAdvanceBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 5, "Divergence", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 5, ampDivText, text_color=ampDivText == "NONE" ? color.gray : color.yellow, bgcolor=color.new(color.black, 0), text_size=size.normal)
-    table.cell(ampDashTable, 3, 6, "Quick Risk", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 6, ampDisplayQuickRiskText, text_color=ampDisplayQuickRiskColor, bgcolor=quickRiskBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 7, "Action", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 7, ampDisplayAction, text_color=ampDisplayActionColor, bgcolor=actionBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 8, "SL/T1/Exit", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 8, ampLevelsText, text_color=ampLevelsColor, bgcolor=levelsBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 9, "Bull Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 9, str.tostring(ampBullScore) + "/100", text_color=color.lime, bgcolor=color.new(color.black, 0), text_size=size.normal)
-    table.cell(ampDashTable, 3, 10, "Bear Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 10, str.tostring(ampBearScore) + "/100", text_color=color.red, bgcolor=bearScoreBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 11, "CE IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 11, ceIvText, text_color=ceIvColor, bgcolor=ceIvColor == color.red ? redTextBg : darkCellBg, text_size=size.normal)
-    table.cell(ampDashTable, 3, 12, "PE IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 12, peIvText, text_color=peIvColor, bgcolor=peIvColor == color.red ? redTextBg : darkCellBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 0, "PRESSURE", text_color=color.white, bgcolor=pressureHeaderBg, text_size=tableLabelSize)
+    table.cell(ampDashTable, 4, 0, pressureAdvanceDisplayText, text_color=color.white, bgcolor=pressureHeaderBg, text_size=tableValueSize)
+    int rightRow = 1
+    if showRowPriority
+        table.cell(ampDashTable, 3, rightRow, "Priority", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, pressurePriorityText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowPressure
+        table.cell(ampDashTable, 3, rightRow, "Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, pressureScoreText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowLead
+        table.cell(ampDashTable, 3, rightRow, "Lead", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, pressureLeadText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowAdvance
+        table.cell(ampDashTable, 3, rightRow, "Advance", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, pressureAdvanceDisplayText, text_color=pressureAdvanceDisplayColor, bgcolor=pressureAdvanceBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowDivergence
+        table.cell(ampDashTable, 3, rightRow, "Divergence", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, ampDivText, text_color=ampDivText == "NONE" ? color.gray : color.yellow, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowQuickRisk
+        table.cell(ampDashTable, 3, rightRow, "Quick Risk", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, ampDisplayQuickRiskText, text_color=ampDisplayQuickRiskColor, bgcolor=quickRiskBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowAction
+        table.cell(ampDashTable, 3, rightRow, "Action", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, ampDisplayAction, text_color=ampDisplayActionColor, bgcolor=actionBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowLevels
+        table.cell(ampDashTable, 3, rightRow, "SL/T1/Exit", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, ampLevelsText, text_color=ampLevelsColor, bgcolor=levelsBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowBullScore
+        table.cell(ampDashTable, 3, rightRow, "Bull Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, str.tostring(ampBullScore) + "/100", text_color=color.lime, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowBearScore
+        table.cell(ampDashTable, 3, rightRow, "Bear Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, str.tostring(ampBearScore) + "/100", text_color=color.red, bgcolor=bearScoreBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowCeIv
+        table.cell(ampDashTable, 3, rightRow, "CE IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, ceIvText, text_color=ceIvColor, bgcolor=ceIvColor == color.red ? redTextBg : darkCellBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
+    if showRowPeIv
+        table.cell(ampDashTable, 3, rightRow, "PE IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, peIvText, text_color=peIvColor, bgcolor=peIvColor == color.red ? redTextBg : darkCellBg, text_size=tableValueSize)
+        rightRow := rightRow + 1
 
 if barstate.islast and (not showAmpMacdPredictor or not ampShowDashboard)
     table.clear(ampDashTable, 0, 0, 4, 12)
