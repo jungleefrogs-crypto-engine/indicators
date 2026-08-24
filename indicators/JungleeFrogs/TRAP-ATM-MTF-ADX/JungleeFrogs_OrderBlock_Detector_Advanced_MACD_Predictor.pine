@@ -99,6 +99,7 @@ pivotTfInput    = input.timeframe("D", "Pivot Level Timeframe", group=groupTech)
 pivotTf         = useChartTfPivot ? timeframe.period : pivotTfInput
 obLookback = input.int(20, "Order Block Search Lookback", minval=3, group=groupTech)
 obLifeBars = input.int(40, "Order Block Visible Bars", minval=1, group=groupTech)
+obMaxDistanceATR = input.float(6.0, "Order Block Max Distance From Price (ATR, 0 = disabled)", minval=0.0, step=0.5, group=groupTech, tooltip="Deactivates a Demand/Supply zone once price has moved this many ATRs away from it, even if it is still within its visible-bars window. Prevents a stale zone (e.g. an old high-premium level on a decaying option) from still driving Trigger/Invalid levels and the Pressure Priority score.")
 ema1Len    = input.int(9, "EMA 9", group=groupTech)
 ema2Len    = input.int(20, "EMA 20", group=groupTech)
 ema3Len    = input.int(50, "EMA 50", group=groupTech)
@@ -119,6 +120,7 @@ usePivotFallbackZones = input.bool(true, "Auto Show 5m Pivot Supply/Demand Zones
 adxDiLen = input.int(14, "ADX DI Length", minval=1, group=groupTech)
 adxSmoothingLen = input.int(14, "ADX Smoothing", minval=1, group=groupTech)
 adxTrendLevel = input.float(20.0, "ADX Trend Level", minval=1.0, step=0.5, group=groupTech)
+momentumRocLen = input.int(10, "Momentum ROC Length (bars)", minval=1, group=groupTech, tooltip="Rate of Change: percent price change over this many bars. Positive = rising momentum, negative = falling.")
 adxStrongLevel = input.float(25.0, "ADX Strong Trend Level", minval=1.0, step=0.5, group=groupTech)
 
 // Safe Entry Pointer Arrow settings.
@@ -206,6 +208,8 @@ expiryCutoffHourIST = input.int(15, "Expiry Cutoff Hour IST", minval=0, maxval=2
 expiryCutoffMinuteIST = input.int(30, "Expiry Cutoff Minute IST", minval=0, maxval=59, group=groupOpt)
 strikeStep  = input.int(50, "ATM Strike Step", minval=1, group=groupOpt)
 strangleFactor = input.float(0.65, "Estimated Strangle = Straddle x", step=0.05, group=groupOpt)
+showIv = input.bool(true, "Show ATM CE/PE Implied Volatility", group=groupOpt)
+ivRiskFreeRatePct = input.float(6.5, "IV Risk-Free Rate %", minval=0.0, maxval=25.0, step=0.25, group=groupOpt, tooltip="Used in the Black-Scholes model to back out Implied Volatility from the ATM CE/PE premium. Default ~India risk-free rate; adjust for other markets/currencies.")
 
 //=========================================================
 // OI INPUT
@@ -257,6 +261,13 @@ diBiasText = diPlus > diMinus ? "BULLISH" : diMinus > diPlus ? "BEARISH" : "NEUT
 adxStrengthText = adxVal >= adxStrongLevel ? "STRONG TREND" : adxVal >= adxTrendLevel ? "TRENDING" : "RANGE / WEAK"
 
 //=========================================================
+// MOMENTUM (RATE OF CHANGE)
+//=========================================================
+momentumRoc = ta.roc(close, momentumRocLen)
+momentumRocText = (momentumRoc >= 0 ? "+" : "") + str.tostring(momentumRoc, "#.##") + "% " + (momentumRoc > 0 ? "▲" : momentumRoc < 0 ? "▼" : "→")
+momentumRocColor = momentumRoc > 0 ? color.lime : momentumRoc < 0 ? color.red : color.yellow
+
+//=========================================================
 // MASSIVE STR CHANGE HELPER
 //=========================================================
 f_str_change_pct(_new, _old) =>
@@ -272,13 +283,68 @@ f_safe_zone_volume(_primary, _fallback1, _fallback2) =>
     // Priority: source-candle volume -> current/alternate volume -> average volume -> 1 minimum placeholder.
     not na(_primary) and _primary > 0 ? _primary : not na(_fallback1) and _fallback1 > 0 ? _fallback1 : not na(_fallback2) and _fallback2 > 0 ? _fallback2 : 1.0
 
+// format.volume is built for share/contract counts and rounds anything under ~1 down to
+// "0" for display. Crypto pairs report volume in the base asset (e.g. BTC), where a single
+// candle can be a small fraction like 0.01-0.05 - a real, nonzero number that format.volume
+// was silently showing as "VOL: 0". Below 1000, show plain decimals instead.
+f_format_vol(_v) =>
+    na(_v) ? "0" : _v >= 1000 ? str.tostring(_v, format.volume) : str.tostring(_v, "#.####")
+
+//=========================================================
+// BLACK-SCHOLES IMPLIED VOLATILITY (for ATM CE/PE IV)
+//=========================================================
+// Pine has no built-in normal CDF, so this uses the Zelen & Severo polynomial
+// approximation (max error ~7.5e-8) - the standard approach for Black-Scholes in Pine.
+f_norm_cdf(_x) =>
+    _absX = math.abs(_x)
+    _k = 1.0 / (1.0 + 0.2316419 * _absX)
+    _poly = _k * (0.319381530 + _k * (-0.356563782 + _k * (1.781477937 + _k * (-1.821255978 + _k * 1.330274429))))
+    _pdf = math.exp(-_absX * _absX / 2.0) / math.sqrt(2.0 * math.pi)
+    _cdf = 1.0 - _pdf * _poly
+    _x >= 0 ? _cdf : 1.0 - _cdf
+
+f_bs_price(_S, _K, _T, _r, _sigma, _isCall) =>
+    _sqrtT = math.sqrt(_T)
+    _d1 = (math.log(_S / _K) + (_r + _sigma * _sigma / 2.0) * _T) / (_sigma * _sqrtT)
+    _d2 = _d1 - _sigma * _sqrtT
+    _disc = math.exp(-_r * _T)
+    _isCall ? _S * f_norm_cdf(_d1) - _K * _disc * f_norm_cdf(_d2) : _K * _disc * f_norm_cdf(-_d2) - _S * f_norm_cdf(-_d1)
+
+f_bs_vega(_S, _K, _T, _r, _sigma) =>
+    _sqrtT = math.sqrt(_T)
+    _d1 = (math.log(_S / _K) + (_r + _sigma * _sigma / 2.0) * _T) / (_sigma * _sqrtT)
+    _S * _sqrtT * math.exp(-_d1 * _d1 / 2.0) / math.sqrt(2.0 * math.pi)
+
+// Inverts Black-Scholes for sigma via Newton-Raphson, starting from a 30% guess.
+// Returns IV as a percentage, or na when inputs are missing/invalid or it fails to
+// converge (common very close to expiry or on an illiquid/stale premium print).
+f_implied_vol(_marketPrice, _S, _K, _T, _r, _isCall) =>
+    float _sigma = 0.30
+    bool _invalid = na(_marketPrice) or _marketPrice <= 0 or na(_S) or _S <= 0 or na(_K) or _K <= 0 or na(_T) or _T <= 0
+    if not _invalid
+        for _i = 1 to 50
+            _price = f_bs_price(_S, _K, _T, _r, _sigma, _isCall)
+            _vega = f_bs_vega(_S, _K, _T, _r, _sigma)
+            _diff = _price - _marketPrice
+            if math.abs(_diff) < 0.001 or _vega < 1e-8
+                break
+            _sigma := math.max(math.min(_sigma - _diff / _vega, 5.0), 0.001)
+    _invalid or na(_sigma) ? na : _sigma * 100.0
+
 f_safe_zone_score(_vol, _volSma, _body, _atr) =>
+    // Each half is capped at 50 BEFORE summing, so the result always stays in [0, 100].
+    // Previously an oversized body/ATR or volume/avgVolume ratio could push the raw
+    // score past 100 (e.g. 250+), which let STR dominate the Pressure Priority blend
+    // in pressureDemandScore/pressureSupplyScore below, since every other component
+    // there (OI%, Volume%, Location, Direction) is already capped 0-100.
     safeVol = not na(_vol) and _vol > 0 ? _vol : na
     safeVolSma = not na(_volSma) and _volSma > 0 ? _volSma : safeVol
     safeVolRatio = not na(safeVol) and not na(safeVolSma) ? safeVol / math.max(safeVolSma, 1.0) : 1.0
     safeBody = not na(_body) and _body > 0 ? _body : syminfo.mintick
     safeAtr = not na(_atr) and _atr > 0 ? _atr : syminfo.mintick
-    scoreRaw = safeVolRatio * 50.0 + (safeBody / math.max(safeAtr, syminfo.mintick)) * 50.0
+    volComponent = math.min(safeVolRatio * 50.0, 50.0)
+    bodyComponent = math.min((safeBody / math.max(safeAtr, syminfo.mintick)) * 50.0, 50.0)
+    scoreRaw = volComponent + bodyComponent
     na(scoreRaw) ? 50.0 : scoreRaw
 
 
@@ -437,7 +503,10 @@ ampLongT2 = ampEntryPrice + atrVal * ampSlAtrMult * 2.0
 ampShortT1 = ampEntryPrice - atrVal * ampSlAtrMult
 ampShortT2 = ampEntryPrice - atrVal * ampSlAtrMult * 2.0
 ampRegimeText = close > ema200 ? "BULLISH" : close < ema200 ? "BEARISH" : "NEUTRAL"
-ampMtfText = ampMacdRegimeTf > ampSigRegimeTf ? ampRegimeTf + " BULL" : ampMacdRegimeTf < ampSigRegimeTf ? ampRegimeTf + " BEAR" : ampRegimeTf + " FLAT"
+// Labeled "TF<n>" (not just "<n>") so it reads as a timeframe tag, not a score -
+// this row is the Regime-timeframe MACD state ONLY; it is intentionally distinct
+// from "MTF Power" below, which blends chart + Confirm TF + Regime TF together.
+ampMtfText = ampMacdRegimeTf > ampSigRegimeTf ? "TF" + ampRegimeTf + " BULL" : ampMacdRegimeTf < ampSigRegimeTf ? "TF" + ampRegimeTf + " BEAR" : "TF" + ampRegimeTf + " FLAT"
 ampConfirmBull = ampMacdConfirmTf > ampSigConfirmTf
 ampConfirmBear = ampMacdConfirmTf < ampSigConfirmTf
 ampRegimeBull = ampMacdRegimeTf > ampSigRegimeTf
@@ -632,6 +701,24 @@ peAtm = manualPeReady ? peAtmManual : peAtmAuto
 
 straddleValue = na(ceAtm) or na(peAtm) ? na : ceAtm + peAtm
 estimatedStrangle = na(straddleValue) ? na : straddleValue * strangleFactor
+
+// Implied Volatility, back-solved from the ATM CE/PE premium via Black-Scholes.
+// Uses `close` as the underlying spot - consistent with how the rest of this script
+// already treats `close` (ATM strike selection, pivots, EMAs, etc.). On an instrument
+// with no real option chain (e.g. a spot crypto pair), ceAtm/peAtm are na, so IV
+// naturally comes out na/"N/A" here too, with no extra guard needed.
+ivTimeToExpiryYears = math.max(adjustedDaysUntilExpiry, 0) / 365.0
+ivRiskFreeRate = ivRiskFreeRatePct / 100.0
+ceIv = showIv ? f_implied_vol(ceAtm, close, atmStrike, ivTimeToExpiryYears, ivRiskFreeRate, true) : na
+peIv = showIv ? f_implied_vol(peAtm, close, atmStrike, ivTimeToExpiryYears, ivRiskFreeRate, false) : na
+// CE and PE IV can move in different directions (skew), so each gets its own
+// arrow/color rather than one blended reading for the combined cell.
+ceIvArrow = na(ceIv) or na(ceIv[1]) ? "" : ceIv > ceIv[1] ? " ▲" : ceIv < ceIv[1] ? " ▼" : " →"
+peIvArrow = na(peIv) or na(peIv[1]) ? "" : peIv > peIv[1] ? " ▲" : peIv < peIv[1] ? " ▼" : " →"
+ceIvColor = na(ceIv) or na(ceIv[1]) ? color.white : ceIv > ceIv[1] ? color.lime : ceIv < ceIv[1] ? color.red : color.yellow
+peIvColor = na(peIv) or na(peIv[1]) ? color.white : peIv > peIv[1] ? color.lime : peIv < peIv[1] ? color.red : color.yellow
+ceIvText = na(ceIv) ? "CE IV N/A" : "CE " + str.tostring(ceIv, "#.#") + "%" + ceIvArrow
+peIvText = na(peIv) ? "PE IV N/A" : "PE " + str.tostring(peIv, "#.#") + "%" + peIvArrow
 
 //=========================================================
 // CALL / PUT OI FEEDS FOR MINI BARS
@@ -900,8 +987,15 @@ else if pivotSupplySignal
         supplyLastShockBorn := supplyBorn
         lastSupplyStrShockBar := bar_index
 
-demandActive = not na(demandBorn) and (bar_index - demandBorn <= obLifeBars)
-supplyActive = not na(supplyBorn) and (bar_index - supplyBorn <= obLifeBars)
+// A zone can still be within its bar-count window but be so far from current price
+// that it is no longer a realistic level (common on fast-decaying option premiums,
+// where an old high-premium supply zone can sit 2-3x above the current price).
+// obMaxDistanceATR retires it early in that case; every downstream read (boxes,
+// labels, Pressure Priority, Trap Risk, Trigger/Invalid) goes through these two flags.
+demandTooFar = obMaxDistanceATR > 0 and not na(demandHigh) and atrVal > 0 and math.abs(close - demandHigh) > atrVal * obMaxDistanceATR
+supplyTooFar = obMaxDistanceATR > 0 and not na(supplyLow) and atrVal > 0 and math.abs(close - supplyLow) > atrVal * obMaxDistanceATR
+demandActive = not na(demandBorn) and (bar_index - demandBorn <= obLifeBars) and not demandTooFar
+supplyActive = not na(supplyBorn) and (bar_index - supplyBorn <= obLifeBars) and not supplyTooFar
 
 //=========================================================
 // BOXES + LABELS
@@ -955,7 +1049,7 @@ if barstate.islast
         demandBox := box.new(left=demandBorn, top=displayDemandHigh, right=bar_index + 1, bottom=displayDemandLow, xloc=xloc.bar_index, bgcolor=colDemandFill, border_color=colDemandBorder)
         demandVolForLabel = f_safe_zone_volume(demandVolumeStored, volume, volSma)
         demandScoreForLabel = na(demandScoreStored) or demandScoreStored <= 0 ? f_safe_zone_score(volume, volSma, math.abs(open - close), atrVal) : demandScoreStored
-        demandVolText = "\nVOL: " + str.tostring(demandVolForLabel, format.volume)
+        demandVolText = "\nVOL: " + f_format_vol(demandVolForLabel)
         demandOiText = na(demandOiStored) ? "" : "\nPUT OI: " + str.tostring(demandOiStored, format.volume)
         demandStrText = "\nSTR: " + str.tostring(demandScoreForLabel, "#.0")
         if showOldStrInZoneLabel and demandLastShockBorn == demandBorn and not na(demandLastShockOldScore) and not na(demandLastShockNewScore)
@@ -966,7 +1060,7 @@ if barstate.islast
         supplyBox := box.new(left=supplyBorn, top=displaySupplyHigh, right=bar_index + 1, bottom=displaySupplyLow, xloc=xloc.bar_index, bgcolor=colSupplyFill, border_color=colSupplyBorder)
         supplyVolForLabel = f_safe_zone_volume(supplyVolumeStored, volume, volSma)
         supplyScoreForLabel = na(supplyScoreStored) or supplyScoreStored <= 0 ? f_safe_zone_score(volume, volSma, math.abs(open - close), atrVal) : supplyScoreStored
-        supplyVolText = "\nVOL: " + str.tostring(supplyVolForLabel, format.volume)
+        supplyVolText = "\nVOL: " + f_format_vol(supplyVolForLabel)
         supplyOiText = na(supplyOiStored) ? "" : "\nCALL OI: " + str.tostring(supplyOiStored, format.volume)
         supplyStrText = "\nSTR: " + str.tostring(supplyScoreForLabel, "#.0")
         if showOldStrInZoneLabel and supplyLastShockBorn == supplyBorn and not na(supplyLastShockOldScore) and not na(supplyLastShockNewScore)
@@ -1287,14 +1381,12 @@ pressureLeadText = pressureLeadFactor + " | Δ " + str.tostring(math.abs(pressur
 pressureAdvanceText = pressureBuyAdvance ? "ADV BUY WATCH" : pressureSellAdvance ? "ADV SELL WATCH" : "WAIT"
 pressureAdvanceColor = pressureBuyAdvance ? colPressureBuy : pressureSellAdvance ? colPressureSell : colPressureWait
 
+// NOTE: the on-chart ADV BUY/SELL pointer label used to be drawn right here, but Trap
+// Risk (trapHigh / zoneCompression / etc.) is not computed until the Anti-Trap engine
+// further down - drawing it here meant it could never know about an active trap and
+// would keep showing a plain green/red pointer even while the dashboard said TRAP /
+// AVOID for the same signal. Moved below, after Trap Risk exists, so it can match.
 var label pressureAdvanceLabel = na
-if barstate.islast
-    if not na(pressureAdvanceLabel)
-        label.delete(pressureAdvanceLabel)
-    if showPressurePriority and pressureShowAdvanceLabel and (pressureBuyAdvance or pressureSellAdvance)
-        pressureLabelY = pressureBuyAdvance ? low - atrVal * 1.20 : high + atrVal * 1.20
-        pressureLabelText = pressureBuyAdvance ? "ADV\nBUY\n" + pressureLeadFactor : "ADV\nSELL\n" + pressureLeadFactor
-        pressureAdvanceLabel := label.new(bar_index + 1, pressureLabelY, pressureLabelText, xloc=xloc.bar_index, style=pressureBuyAdvance ? label.style_label_up : label.style_label_down, color=pressureAdvanceColor, textcolor=color.white, size=size.normal)
 
 var int lastPressureAdvanceAlertBar = na
 if pressureAlertOnAdvance and (pressureBuyAdvance or pressureSellAdvance) and (na(lastPressureAdvanceAlertBar) or bar_index - lastPressureAdvanceAlertBar >= pressureAlertCooldownBars)
@@ -1320,7 +1412,39 @@ trapHigh = zoneCompression or buyIntoSupplyTrap or sellIntoDemandTrap or fakeBuy
 trapMedium = not trapHigh and (bothZonesStrong or math.abs(pressureEdge) < pressureDominanceThreshold or (adxVal >= adxTrendLevel and math.abs(diPlus - diMinus) < 3.0))
 trapRiskText = trapHigh ? "HIGH TRAP" : trapMedium ? "MEDIUM" : "LOW"
 trapRiskColor = trapHigh ? color.red : trapMedium ? color.orange : color.lime
-trapReasonText = fakeBuyBreakout ? "FAKE BUY BREAK" : fakeSellBreakdown ? "FAKE SELL BREAK" : buyIntoSupplyTrap ? "BUY INTO SUPPLY" : sellIntoDemandTrap ? "SELL INTO DEMAND" : zoneCompression ? "ZONE SQUEEZE" : bothZonesStrong ? "BOTH STRONG" : "OK"
+trapReasonText = fakeBuyBreakout ? "FAKE BUY BREAKOUT" : fakeSellBreakdown ? "FAKE SELL BREAKDOWN" : buyIntoSupplyTrap ? "BUY INTO SUPPLY" : sellIntoDemandTrap ? "SELL INTO DEMAND" : zoneCompression ? "ZONE SQUEEZE" : bothZonesStrong ? "BOTH STRONG" : "OK"
+// Which side the trap actually warns against, so "TRAP / AVOID" doesn't read as
+// "stay away from everything" when the trap is really one-sided (e.g. a fake BUY
+// breakout only warns against chasing longs, it says nothing about shorting).
+trapDirectionWord = fakeBuyBreakout or buyIntoSupplyTrap ? "BUY" : fakeSellBreakdown or sellIntoDemandTrap ? "SELL" : "BOTH"
+
+// The Pressure "Advance" watch (pressureAdvanceText) is computed independently of
+// Trap Risk, so it could still show a clean "ADV BUY/SELL WATCH" even when Trap Risk
+// has specifically flagged that exact setup as a trap (buyIntoSupplyTrap /
+// sellIntoDemandTrap ARE defined in terms of an active Pressure Advance - they mean
+// "this Advance signal is walking into the opposite zone"). Without this, the AMP-MTF
+// table could say "TRAP / AVOID BUY" while the Pressure table said "ADV BUY WATCH"
+// for the identical setup. Make the Pressure table defer to Trap Risk in that case.
+// Broadened to ANY active trap reason (zone squeeze, both-zones-strong, fake breakout,
+// or the buy/sell-into-wrong-zone cases) coinciding with an active Advance signal - not
+// just buyIntoSupplyTrap/sellIntoDemandTrap. A "ZONE SQUEEZE" trap invalidates an active
+// ADV BUY/SELL just as much as a wrong-zone trap does; both must suppress the green/red
+// all-clear reading.
+pressureAdvanceTrapped = trapHigh and (pressureBuyAdvance or pressureSellAdvance)
+pressureAdvanceDisplayText = pressureAdvanceTrapped ? "TRAP / AVOID " + trapDirectionWord : pressureAdvanceText
+pressureAdvanceDisplayColor = pressureAdvanceTrapped ? color.red : pressureAdvanceColor
+
+// On-chart ADV BUY/SELL pointer, relocated here (see note above pressureAdvanceLabel's
+// declaration) so it can read Trap Risk and switch to a TRAP/AVOID pointer instead of
+// keeping a plain green/red one for a signal the dashboard has already flagged as trapped.
+if barstate.islast
+    if not na(pressureAdvanceLabel)
+        label.delete(pressureAdvanceLabel)
+    if showPressurePriority and pressureShowAdvanceLabel and (pressureBuyAdvance or pressureSellAdvance)
+        pressureLabelY = pressureBuyAdvance ? low - atrVal * 1.20 : high + atrVal * 1.20
+        pressureLabelText = pressureAdvanceTrapped ? "TRAP\nAVOID\n" + trapDirectionWord : pressureBuyAdvance ? "ADV\nBUY\n" + pressureLeadFactor : "ADV\nSELL\n" + pressureLeadFactor
+        pressureLabelColor = pressureAdvanceTrapped ? color.new(color.red, 0) : pressureAdvanceColor
+        pressureAdvanceLabel := label.new(bar_index + 1, pressureLabelY, pressureLabelText, xloc=xloc.bar_index, style=pressureBuyAdvance ? label.style_label_up : label.style_label_down, color=pressureLabelColor, textcolor=color.white, size=size.normal)
 
 // MTF Power uses available non-repainting AMP levels: current chart + confirmation TF + regime TF.
 mtfBullPower = (ampMacdCurr > ampSigCurr ? 30.0 : 0.0) + (ampConfirmBull ? 35.0 : 0.0) + (ampRegimeBull ? 35.0 : 0.0)
@@ -1333,12 +1457,12 @@ advBuyTrigger = high + triggerBuffer
 advSellTrigger = low - triggerBuffer
 advBuyInvalid = showDemandBoxNow ? displayDemandLow - atrVal * invalidBufferATR : low - atrVal * invalidBufferATR
 advSellInvalid = showSupplyBoxNow ? displaySupplyHigh + atrVal * invalidBufferATR : high + atrVal * invalidBufferATR
-advanceTriggerText = pressureBuyAdvance ? "BUY > " + str.tostring(advBuyTrigger, format.mintick) : pressureSellAdvance ? "SELL < " + str.tostring(advSellTrigger, format.mintick) : "WAIT"
+advanceTriggerText = pressureBuyAdvance ? "BUY IF PRICE > " + str.tostring(advBuyTrigger, format.mintick) : pressureSellAdvance ? "SELL IF PRICE < " + str.tostring(advSellTrigger, format.mintick) : "WAIT"
 advanceInvalidText = pressureBuyAdvance ? "BAD < " + str.tostring(advBuyInvalid, format.mintick) : pressureSellAdvance ? "BAD > " + str.tostring(advSellInvalid, format.mintick) : "WAIT"
 advanceTriggerColor = pressureBuyAdvance ? color.lime : pressureSellAdvance ? color.red : color.gray
 advanceInvalidColor = pressureBuyAdvance or pressureSellAdvance ? color.orange : color.gray
 
-tradeModeText = trapHigh ? "AVOID / TRAP" : pressureBuyAdvance ? "PREPARE BUY" : pressureSellAdvance ? "PREPARE SELL" : ampTradeAction == "ENTER BUY" or ampTradeAction == "ENTER SELL" ? "TRADE" : ampTradeAction == "EXIT LONG" or ampTradeAction == "EXIT SHORT" ? "EXIT NOW" : "WAIT"
+tradeModeText = trapHigh ? "AVOID " + trapDirectionWord : pressureBuyAdvance ? "PREPARE BUY" : pressureSellAdvance ? "PREPARE SELL" : ampTradeAction == "ENTER BUY" or ampTradeAction == "ENTER SELL" ? "TRADE" : ampTradeAction == "EXIT LONG" or ampTradeAction == "EXIT SHORT" ? "EXIT NOW" : "WAIT"
 tradeModeColor = trapHigh ? color.red : pressureBuyAdvance ? color.lime : pressureSellAdvance ? color.red : str.contains(ampTradeAction, "EXIT") ? color.orange : color.yellow
 
 var label trapRiskLabel = na
@@ -1355,29 +1479,54 @@ if trapHigh and (na(lastTrapAlertBar) or bar_index - lastTrapAlertBar >= pressur
     alert("JUNGLEEFROGS TRAP RISK | " + trapReasonText + " | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar)
 
 //=========================================================
+// SIGNAL CONSENSUS METER
+//=========================================================
+// This script deliberately runs several independent bull/bear engines (AMP MACD
+// score, EMA200 regime, ADX/DMI direction, Demand/Supply pressure, probability
+// checklist) side by side, and they will not always agree - that is by design, not
+// a bug. But reading 10+ dashboard rows to work out how many of them actually agree
+// is slow and confusing under pressure. This tallies the vote so it's a single glance.
+consensusBullVotes = (ampBullScore > ampBearScore ? 1 : 0) + (close > ema200 ? 1 : 0) + (diPlus > diMinus ? 1 : 0) + (pressureDemandWins ? 1 : 0) + (bullProb > bearProb ? 1 : 0)
+consensusBearVotes = (ampBearScore > ampBullScore ? 1 : 0) + (close < ema200 ? 1 : 0) + (diMinus > diPlus ? 1 : 0) + (pressureSupplyWins ? 1 : 0) + (bearProb > bullProb ? 1 : 0)
+consensusTotal = 5
+consensusText =
+     consensusBullVotes > consensusBearVotes ? "BULL " + str.tostring(consensusBullVotes) + "/" + str.tostring(consensusTotal) :
+     consensusBearVotes > consensusBullVotes ? "BEAR " + str.tostring(consensusBearVotes) + "/" + str.tostring(consensusTotal) :
+     "SPLIT " + str.tostring(consensusBullVotes) + "-" + str.tostring(consensusBearVotes)
+consensusColor = consensusBullVotes > consensusBearVotes ? color.lime : consensusBearVotes > consensusBullVotes ? color.red : color.yellow
+
+//=========================================================
 // ADVANCED MACD PREDICTOR DASHBOARD
 //=========================================================
 ampDashPos = ampDashboardPositionInput == "Top Right" ? position.top_right : ampDashboardPositionInput == "Middle Right" ? position.middle_right : ampDashboardPositionInput == "Bottom Right" ? position.bottom_right : ampDashboardPositionInput == "Top Left" ? position.top_left : ampDashboardPositionInput == "Middle Left" ? position.middle_left : position.bottom_left
 // Split layout note: Pine tables cannot be pixel-offset side-by-side at the same anchor.
 // This single 5-column table visually behaves like two compact tables with a thin spacer column,
 // reducing vertical height while keeping both sections together at top-right.
-var table ampDashTable = table.new(ampDashPos, 5, 11, bgcolor=colAmpDashBg, border_width=1)
+var table ampDashTable = table.new(ampDashPos, 5, 13, bgcolor=colAmpDashBg, border_width=1)
 
 if barstate.islast and showAmpMacdPredictor and ampShowDashboard
-    table.clear(ampDashTable, 0, 0, 4, 10)
+    table.clear(ampDashTable, 0, 0, 4, 12)
 
     // FINAL DISPLAY ACTION FIX:
     // ampTradeAction may be WAIT when the MACD module has no confirmed/early signal,
     // but the Demand/Supply pressure engine may already be warning ADV BUY/SELL.
     // Show that pressure advance in the header/action rows so the trader sees the fastest actionable context.
+    // Trend/consensus still agreeing with the open side turns a firm EXIT into a softer
+    // PARTIAL EXIT: momentum pausing inside an intact trend calls for taking some profit
+    // or tightening the stop, not for reading it as "the trend reversed, get fully out."
+    ampExitLongIsPartial = consensusBullVotes >= consensusBearVotes
+    ampExitShortIsPartial = consensusBearVotes >= consensusBullVotes
+
     ampDisplayAction =
-         trapHigh ? "TRAP / AVOID" :
+         trapHigh ? "TRAP / AVOID " + trapDirectionWord :
          ampTradeAction == "WAIT" and pressureBuyAdvance ? "ADV BUY WATCH" :
          ampTradeAction == "WAIT" and pressureSellAdvance ? "ADV SELL WATCH" :
+         ampTradeAction == "EXIT LONG" and ampExitLongIsPartial ? "PARTIAL EXIT LONG" :
+         ampTradeAction == "EXIT SHORT" and ampExitShortIsPartial ? "PARTIAL EXIT SHORT" :
          ampTradeAction
 
     ampDisplayActionColor =
-         ampDisplayAction == "TRAP / AVOID" ? color.red :
+         trapHigh ? color.red :
          ampDisplayAction == "ADV BUY WATCH" ? color.lime :
          ampDisplayAction == "ADV SELL WATCH" ? color.red :
          str.contains(ampDisplayAction, "ENTER BUY") or str.contains(ampDisplayAction, "NEAR ENTER BUY") ? color.lime :
@@ -1413,7 +1562,7 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
          str.contains(ampFollowTfText, "TRG") ? color.yellow :
          color.gray
 
-    ampDecisionBg = ampDisplayAction == "TRAP / AVOID" ? color.new(color.red, 0) : str.contains(ampDisplayAction, "BUY") ? color.new(color.green, 0) : str.contains(ampDisplayAction, "SELL") ? color.new(color.red, 0) : str.contains(ampDisplayAction, "EXIT") ? color.new(color.orange, 0) : color.new(color.gray, 20)
+    ampDecisionBg = trapHigh ? color.new(color.red, 0) : str.contains(ampDisplayAction, "BUY") ? color.new(color.green, 0) : str.contains(ampDisplayAction, "SELL") ? color.new(color.red, 0) : str.contains(ampDisplayAction, "EXIT") ? color.new(color.orange, 0) : color.new(color.gray, 20)
 
     // FIX: This row must follow the trader Action, not only ampFinalDecision.
     // ampFinalDecision often stays WAIT during cooldown, while Action may correctly show EXIT / NEAR ENTER.
@@ -1421,10 +1570,12 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
     ampActionSellSide = ampDisplayAction == "ENTER SELL" or ampDisplayAction == "NEAR ENTER SELL" or ampDisplayAction == "EARLY ENTER SELL"
     ampActionAdvBuy = ampDisplayAction == "ADV BUY WATCH"
     ampActionAdvSell = ampDisplayAction == "ADV SELL WATCH"
-    ampActionExitLong = ampDisplayAction == "EXIT LONG"
-    ampActionExitShort = ampDisplayAction == "EXIT SHORT"
-    ampActionNearExitLong = ampDisplayAction == "NEAR EXIT LONG"
-    ampActionNearExitShort = ampDisplayAction == "NEAR EXIT SHORT"
+    // Compared against the raw ampTradeAction (not ampDisplayAction), since the display
+    // text now carries a PARTIAL prefix - the underlying condition is unchanged either way.
+    ampActionExitLong = ampTradeAction == "EXIT LONG"
+    ampActionExitShort = ampTradeAction == "EXIT SHORT"
+    ampActionNearExitLong = ampTradeAction == "NEAR EXIT LONG"
+    ampActionNearExitShort = ampTradeAction == "NEAR EXIT SHORT"
     ampAdvBuyTrigger = advBuyTrigger
     ampAdvSellTrigger = advSellTrigger
 
@@ -1437,19 +1588,25 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
          ampActionSellSide ? "SL " + str.tostring(ampShortSL, format.mintick) + " / T1 " + str.tostring(ampShortT1, format.mintick) :
          ampActionAdvBuy ? "BUY TRG > " + str.tostring(ampAdvBuyTrigger, format.mintick) :
          ampActionAdvSell ? "SELL TRG < " + str.tostring(ampAdvSellTrigger, format.mintick) :
-         ampActionExitLong ? "EXIT LONG NOW" :
-         ampActionExitShort ? "EXIT SHORT NOW" :
+         ampActionExitLong ? (ampExitLongIsPartial ? "PARTIAL EXIT LONG NOW" : "EXIT LONG NOW") :
+         ampActionExitShort ? (ampExitShortIsPartial ? "PARTIAL EXIT SHORT NOW" : "EXIT SHORT NOW") :
          ampActionNearExitLong ? "NEAR EXIT LONG" :
          ampActionNearExitShort ? "NEAR EXIT SHORT" :
          "WAIT"
     ampLevelsColor = trapHigh ? color.red : ampActionBuySide or ampActionAdvBuy ? color.lime : ampActionSellSide or ampActionAdvSell ? color.red : ampActionExitLong or ampActionExitShort or ampActionNearExitLong or ampActionNearExitShort ? color.orange : color.white
 
-    ampScoreText = "B " + str.tostring(ampBullScore) + " / S " + str.tostring(ampBearScore)
+    // Spelled out BULL/BEAR (not "B"/"S") to match the Regime TF, MTF Power, and
+    // Consensus rows - "S" here used to mean Bear/Sell while the Pressure table's
+    // own "D/S" row means Demand/Supply, which was two different meanings for "S".
+    ampScoreText = "BULL " + str.tostring(ampBullScore) + " / BEAR " + str.tostring(ampBearScore)
     ampScoreColor = ampBullScore > ampBearScore ? color.lime : ampBearScore > ampBullScore ? color.red : color.yellow
 
     spacerBg = color.new(color.black, 100)
     darkCellBg = color.new(color.black, 0)
     redTextBg = colRedTextCellBg
+    // Same yellow-background-when-text-is-red convention used for DI-, Regime TF,
+    // MTF Power, Trap Risk, etc. elsewhere in this dashboard.
+    ampScoreBg = ampBearScore > ampBullScore ? redTextBg : darkCellBg
 
     // Yellow background is applied only where the visible table text is red / danger-side.
     ampRegimeBg = ampRegimeText == "BEARISH" ? redTextBg : darkCellBg
@@ -1459,18 +1616,21 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
     tradeModeBg = trapHigh or pressureSellAdvance ? redTextBg : darkCellBg
     advanceTriggerBg = pressureSellAdvance ? redTextBg : darkCellBg
     pressurePriorityBg = pressureSupplyWins ? redTextBg : darkCellBg
-    pressureAdvanceBg = pressureSellAdvance ? redTextBg : darkCellBg
+    pressureAdvanceBg = pressureSellAdvance or pressureAdvanceTrapped ? redTextBg : darkCellBg
     quickRiskBg = ampDisplayQuickRiskText == "TRAP RISK" or ampDisplayQuickRiskText == "PREPARE SELL" ? redTextBg : darkCellBg
-    actionBg = ampDisplayAction == "TRAP / AVOID" or ampDisplayAction == "ADV SELL WATCH" or str.contains(ampDisplayAction, "ENTER SELL") or str.contains(ampDisplayAction, "NEAR ENTER SELL") ? redTextBg : darkCellBg
+    actionBg = trapHigh or ampDisplayAction == "ADV SELL WATCH" or str.contains(ampDisplayAction, "ENTER SELL") or str.contains(ampDisplayAction, "NEAR ENTER SELL") ? redTextBg : darkCellBg
     levelsBg = trapHigh or ampActionSellSide or ampActionAdvSell ? redTextBg : darkCellBg
     bearScoreBg = redTextBg
 
     // LEFT COMPACT TABLE: Market state / timing / trap / trigger.
     table.cell(ampDashTable, 0, 0, "AMP-MTF", text_color=color.white, bgcolor=ampDecisionBg, text_size=size.small)
     table.cell(ampDashTable, 1, 0, ampDisplayAction, text_color=color.white, bgcolor=ampDecisionBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 1, "Regime", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    // Labeled with its timeframe so it doesn't read as a same-weight, live directional
+    // call next to ADX/DMI - Regime is a slow 200 EMA filter, not a short-term signal,
+    // and it disagreeing with ADX/DMI during a fast move is expected, not a bug.
+    table.cell(ampDashTable, 0, 1, "Regime (200EMA)", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 1, 1, ampRegimeText, text_color=ampRegimeText == "BULLISH" ? color.lime : ampRegimeText == "BEARISH" ? color.red : color.yellow, bgcolor=ampRegimeBg, text_size=size.normal)
-    table.cell(ampDashTable, 0, 2, "MTF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 0, 2, "Regime TF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 1, 2, ampMtfText, text_color=ampMacdRegimeTf > ampSigRegimeTf ? color.lime : color.red, bgcolor=ampMtfBg, text_size=size.normal)
     table.cell(ampDashTable, 0, 3, "MTF Power", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 1, 3, mtfPowerText, text_color=mtfPowerColor, bgcolor=mtfPowerBg, text_size=size.normal)
@@ -1487,16 +1647,21 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
     table.cell(ampDashTable, 0, 9, "ADX", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 1, 9, str.tostring(adxVal, "#.##"), text_color=adxVal > adxTrendLevel ? color.yellow : color.gray, bgcolor=color.new(color.black, 0), text_size=size.normal)
     table.cell(ampDashTable, 0, 10, "Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 1, 10, ampScoreText, text_color=ampScoreColor, bgcolor=color.new(color.black, 0), text_size=size.normal)
+    table.cell(ampDashTable, 1, 10, ampScoreText, text_color=ampScoreColor, bgcolor=ampScoreBg, text_size=size.normal)
+
+    table.cell(ampDashTable, 0, 11, "Consensus", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 11, consensusText, text_color=consensusColor, bgcolor=consensusColor == color.red ? redTextBg : darkCellBg, text_size=size.normal)
+    table.cell(ampDashTable, 0, 12, "Momentum", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 1, 12, momentumRocText, text_color=momentumRocColor, bgcolor=momentumRoc < 0 ? redTextBg : darkCellBg, text_size=size.normal)
 
     // Spacer column to visually split the dashboard into two side-by-side parts.
-    for r = 0 to 10
+    for r = 0 to 12
         table.cell(ampDashTable, 2, r, " ", text_color=color.new(color.white, 100), bgcolor=spacerBg, text_size=size.tiny)
 
     // RIGHT COMPACT TABLE: Pressure / advance / risk / action / levels.
-    pressureHeaderBg = pressureBuyAdvance ? color.new(color.green, 0) : pressureSellAdvance ? color.new(color.red, 0) : color.new(color.orange, 0)
+    pressureHeaderBg = pressureAdvanceTrapped ? color.new(color.red, 0) : pressureBuyAdvance ? color.new(color.green, 0) : pressureSellAdvance ? color.new(color.red, 0) : color.new(color.orange, 0)
     table.cell(ampDashTable, 3, 0, "PRESSURE", text_color=color.white, bgcolor=pressureHeaderBg, text_size=size.small)
-    table.cell(ampDashTable, 4, 0, pressureAdvanceText, text_color=color.white, bgcolor=pressureHeaderBg, text_size=size.normal)
+    table.cell(ampDashTable, 4, 0, pressureAdvanceDisplayText, text_color=color.white, bgcolor=pressureHeaderBg, text_size=size.normal)
     table.cell(ampDashTable, 3, 1, "Priority", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 4, 1, pressurePriorityText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
     table.cell(ampDashTable, 3, 2, "Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
@@ -1504,7 +1669,7 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
     table.cell(ampDashTable, 3, 3, "Lead", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 4, 3, pressureLeadText, text_color=pressurePriorityColor, bgcolor=pressurePriorityBg, text_size=size.normal)
     table.cell(ampDashTable, 3, 4, "Advance", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-    table.cell(ampDashTable, 4, 4, pressureAdvanceText, text_color=pressureAdvanceColor, bgcolor=pressureAdvanceBg, text_size=size.normal)
+    table.cell(ampDashTable, 4, 4, pressureAdvanceDisplayText, text_color=pressureAdvanceDisplayColor, bgcolor=pressureAdvanceBg, text_size=size.normal)
     table.cell(ampDashTable, 3, 5, "Divergence", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 4, 5, ampDivText, text_color=ampDivText == "NONE" ? color.gray : color.yellow, bgcolor=color.new(color.black, 0), text_size=size.normal)
     table.cell(ampDashTable, 3, 6, "Quick Risk", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
@@ -1517,9 +1682,13 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
     table.cell(ampDashTable, 4, 9, str.tostring(ampBullScore) + "/100", text_color=color.lime, bgcolor=color.new(color.black, 0), text_size=size.normal)
     table.cell(ampDashTable, 3, 10, "Bear Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
     table.cell(ampDashTable, 4, 10, str.tostring(ampBearScore) + "/100", text_color=color.red, bgcolor=bearScoreBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 11, "CE IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 11, ceIvText, text_color=ceIvColor, bgcolor=ceIvColor == color.red ? redTextBg : darkCellBg, text_size=size.normal)
+    table.cell(ampDashTable, 3, 12, "PE IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+    table.cell(ampDashTable, 4, 12, peIvText, text_color=peIvColor, bgcolor=peIvColor == color.red ? redTextBg : darkCellBg, text_size=size.normal)
 
 if barstate.islast and (not showAmpMacdPredictor or not ampShowDashboard)
-    table.clear(ampDashTable, 0, 0, 4, 10)
+    table.clear(ampDashTable, 0, 0, 4, 12)
 
 //=========================================================
 // PROBABILITY LABEL
@@ -1528,10 +1697,14 @@ var label probLabel = na
 if barstate.islast and showProbability
     if not na(probLabel)
         label.delete(probLabel)
+    // Labeled SCORE, not PROB: bullProb/bearProb are independent confluence checklists
+    // (0-100 each), not complementary probabilities - they will NOT sum to 100%, since
+    // conditions like "inside an active demand zone" and "inside an active supply zone"
+    // can both be true at once when price sits between the two zones.
     probText =
          "FORECAST: " + forecastText + "\n" +
-         "BULL PROB: " + str.tostring(bullProb, "#") + "%\n" +
-         "BEAR PROB: " + str.tostring(bearProb, "#") + "%"
+         "BULL SCORE: " + str.tostring(bullProb, "#") + "/100\n" +
+         "BEAR SCORE: " + str.tostring(bearProb, "#") + "/100"
 
     // Forecast box anti-overlap protection.
     // Keep the forecast box significantly below the visible Demand/Supply boxes
