@@ -86,6 +86,8 @@ file records what changed and when, file by file.
     ▲/▼ arrow and green/red color, since call and put IV can move in
     different directions (skew) - one combined cell can't show two colors.
     Shows "N/A" on instruments with no option premium data (e.g. spot crypto).
+  - `emaLineWidth` input (default 3, was a fixed 2): controls the plotted
+    thickness of all four EMA 9/20/50/200 lines together.
 
 - Repository scaffolding: `README.md`, `LICENSE` (MPL-2.0), `CONTRIBUTING.md`,
   `.gitignore`, `.gitattributes`, `.editorconfig`.
