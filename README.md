@@ -25,7 +25,9 @@ pine-script-toolkit/
 │   ├── trend/                   # trend-strength-suite.pine
 │   ├── volatility/              # adaptive-volatility-bands.pine
 │   ├── volume/                  # volume-flow-meter.pine
-│   └── JungleeFrogs/...         # imported, not yet style-guide compliant (see below)
+│   └── JungleeFrogs/            # branded scripts, own PascalCase filename convention (see below)
+│       ├── TRAP-ATM-MTF-ADX/    # Order Block + Advanced MACD Predictor (legacy, not yet style-guide compliant)
+│       └── EMA-HL-PRESSURE-MATRIX/  # EMA High/Low Pressure Matrix
 ├── libraries/
 │   └── lib-core-utils.pine      # CoreUtils — shared helper functions
 ├── strategies/
@@ -78,6 +80,8 @@ To use it from your own scripts:
 | [`indicators/market-structure/swing-structure-mapper.pine`](indicators/market-structure/swing-structure-mapper.pine) | Indicator | Labels HH/LH/HL/LL swing points and flags breaks of structure. |
 | [`strategies/ema-trend-cross-strategy.pine`](strategies/ema-trend-cross-strategy.pine) | Strategy | EMA cross entries filtered by a baseline trend EMA, with ATR stop/take-profit. |
 | [`libraries/lib-core-utils.pine`](libraries/lib-core-utils.pine) | Library | Shared helper functions used across the scripts above. |
+| [`indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine`](indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine) | Indicator | Order Block detector + multi-timeframe AMP MACD predictor dashboard, with ATM CE/PE OI/IV. |
+| [`indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine`](indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine) | Indicator | EMA 9/20/50/200 on High & Low, Golden/Death cross, Safe Entry/Exit bubbles, and a 26-row Force/Pressure dashboard. |
 
 ## Conventions
 
@@ -105,9 +109,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, and
 [`indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine`](indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine)
 is an imported indicator that predates the style guide. It works, but its
 header, input-group naming, and file name don't yet follow
-`docs/STYLE_GUIDE.md`, so it's excluded from `validate-pine.sh`. Migrating
-it (as a dedicated PR, separate from any logic change) is welcome — see
-`CONTRIBUTING.md`.
+`docs/STYLE_GUIDE.md`, so it's fully excluded from `validate-pine.sh`.
+Migrating it (as a dedicated PR, separate from any logic change) is
+welcome — see `CONTRIBUTING.md`.
+
+The other `indicators/JungleeFrogs/` scripts are fully style-guide
+compliant (header, `Version:`, everything) but intentionally keep a
+PascalCase filename matching their TradingView publish name rather than
+this repo's kebab-case convention — `validate-pine.sh` has a separate,
+narrower exclusion list for just that one check on those files.
 
 ## License
 

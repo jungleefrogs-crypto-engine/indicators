@@ -7,14 +7,30 @@
 # Run from the repo root: ./scripts/validate-pine.sh
 set -euo pipefail
 
-# Scripts that predate the style guide and are not yet migrated.
+# Scripts that predate the style guide and are not yet migrated (skips every check).
 LEGACY_EXCLUDES=(
   "indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine"
+)
+
+# JungleeFrogs-branded scripts intentionally keep the PascalCase filename that
+# matches their TradingView publish name, rather than this repo's kebab-case
+# convention - everything else about them (header, Version, Title/Description)
+# still has to pass, so only the filename-format check is skipped for these.
+FILENAME_ONLY_EXCLUDES=(
+  "indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine"
 )
 
 is_excluded() {
   local f="$1"
   for ex in "${LEGACY_EXCLUDES[@]}"; do
+    [[ "$f" == "$ex" ]] && return 0
+  done
+  return 1
+}
+
+is_filename_only_excluded() {
+  local f="$1"
+  for ex in "${FILENAME_ONLY_EXCLUDES[@]}"; do
     [[ "$f" == "$ex" ]] && return 0
   done
   return 1
@@ -31,7 +47,7 @@ while IFS= read -r -d '' file; do
   base="$(basename "$rel")"
   name="${base%.pine}"
 
-  if [[ ! "$name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+  if [[ ! "$name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] && ! is_filename_only_excluded "$rel"; then
     echo "::error file=$rel::filename must be kebab-case (e.g. my-script.pine)"
     fail=1
   fi
@@ -70,7 +86,7 @@ while IFS= read -r -d '' file; do
   fi
 done < <(find indicators strategies libraries -name '*.pine' -print0)
 
-echo "Checked $checked file(s), excluded ${#LEGACY_EXCLUDES[@]} legacy file(s)."
+echo "Checked $checked file(s), excluded ${#LEGACY_EXCLUDES[@]} legacy file(s) and ${#FILENAME_ONLY_EXCLUDES[@]} filename-only exception(s)."
 if [[ $fail -eq 0 ]]; then
   echo "All Pine scripts follow docs/STYLE_GUIDE.md."
 fi

@@ -7,6 +7,87 @@ file records what changed and when, file by file.
 
 ## [Unreleased]
 
+### Added
+
+- `indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine`
+  (new indicator, 1.0.0): companion to the Order Block indicator above.
+  - 8 fully configurable EMAs (9/20/50/200, each on High AND Low separately,
+    each with its own color + line thickness input).
+  - Golden/Death Cross on the 9H/20H pair and the 50H/200H pair.
+  - Safe Entry / Safe Exit label bubbles, firing on an EMA9-Low slope
+    reversal (entry, at the candle low) or an EMA9-High slope reversal
+    (exit, at the candle high) - an early, one-candle-ahead cue.
+  - BUY(blue)/SELL(yellow) pressure fill inside every candle, blended from
+    6 of the table's rows (EMA/VWAP/MACD/Volume/Body/Trend).
+  - A 26-row "Force / Pressure" dashboard: 22 rows computed live from
+    price/volume/ADX/MACD/divergence/order-block/options data, plus 4
+    manual dropdowns (News, Sector Breadth, Global Markets, Currency/Bond/
+    Crude) for context no chart can auto-detect - these are honestly
+    labeled as your own manual input, not an algorithmic signal. Every row
+    has its own visibility checkbox (default on) and the table compacts
+    around whichever are hidden; a shared font-size control; a ▲/▼ arrow
+    and green/red/white verdict color per row; and red text always gets
+    a yellow cell background, matching the Order Block indicator's
+    conventions throughout.
+  - OI Pressure, Volatility/IV, and PCR/Option Skew reuse the same
+    auto ATM CE/PE + Black-Scholes IV machinery as the Order Block
+    indicator, and degrade to "N/A" automatically on instruments with no
+    option chain (crypto, forex, plain stocks) - same behavior everywhere.
+  - Demand/Supply zone detection runs internally to power 5 of the 26 rows
+    (STR Strength, Price Location, Liquidity Sweep, Breakout Pressure,
+    Retest Confirmation) but, unlike the Order Block indicator, does not
+    draw zone boxes/labels on the chart - this indicator's on-chart footprint
+    is limited to the EMA lines, cross markers, Safe Entry/Exit bubbles, and
+    the candle pressure fill.
+
+- `indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine`:
+  post-publish fixes found while pasting the script into TradingView.
+  - Volume Pressure used `ta.sum()`, which doesn't exist in Pine - the
+    rolling-sum function is `math.sum()`. Compile error, now fixed.
+  - The neutral ("→") verdict color was `color.yellow`, which reads as a
+    dull red/rust on this table's dark background - indistinguishable
+    enough from real red that it looked like a missed case of "red text
+    needs a yellow background." Neutral is now `color.white` for maximum
+    contrast against both red and green. Pine's `table.cell` has no true
+    bold parameter (same limitation noted in the Order Block indicator);
+    value cells already render one size step larger than their row label
+    (`tableValueSize`), which stands in for "bold" throughout. Range
+    Compression's "SQUEEZE" state shows orange (a warning, not bull or
+    bear) while "NORMAL" shares the same neutral white.
+  - Added a plotted VWAP line, styled the same way as the 8 EMAs (own
+    color + thickness input in EMA High/Low Settings) - VWAP was already
+    computed for the VWAP Pressure row but was never actually plotted on
+    the chart.
+  - Added Pivot / R1 R2 R3 / S1 S2 S3 (selectable timeframe, default Daily),
+    all gold-colored via a single "Pivot Points" input group - same
+    non-repainting `lookahead_on` technique on the prior confirmed HTF
+    bar's H/L/C as the Order Block indicator's pivot section.
+  - Replaced the single "Show EMA 9/20/50/200 High/Low Lines" master
+    toggle with 8 independent checkboxes, one per line (e.g. "Show EMA 9
+    High", "Show EMA 9 Low", ... "Show EMA 200 Low") - any single EMA, or
+    just its High or Low half, can now be switched off on its own. VWAP
+    got its own "Show VWAP" toggle for the same reason.
+  - Safe Exit fired from EMA9-High ticking down for a single bar even while
+    EMA9-Low was still climbing hard - a normal one-bar pause inside an
+    intact uptrend, not a rollover, which produced panic-exit-then-re-entry
+    whipsaws right as the rally continued (confirmed against two separate
+    real chart examples). Three combined fixes, mirrored for Safe Entry:
+    1) multi-bar confirmation - the slope reversal must hold for
+    `safeConfirmBars` (default 2) consecutive bars via `ta.rising`/
+    `ta.falling`, not fire on the very first tick; 2) confluence - Safe
+    Exit also requires EMA9-Low to not be actively rising right now
+    ("Require Both EMA9 High & Low To Agree" input, default on);
+    3) a minimum slope-magnitude filter (`safeMinSlopeATR`) rejecting
+    sub-ATR moves over the confirmation window.
+  - Added a separate "EARLY Safe Entry"/"EARLY Safe Exit" signal (smaller,
+    distinctly labeled bubble; "Show EARLY Safe Entry/Exit" input, default
+    on) that fires roughly one candle ahead of the confirmed signal, on
+    momentum deceleration (the EMA9 side is still moving the old direction
+    but each bar's move is smaller than the last) rather than a completed
+    reversal. Intentionally faster and less reliable than the confirmed
+    signal - kept as an additional, clearly-labeled heads-up rather than
+    replacing the whipsaw-resistant confirmed one.
+
 ### Fixed
 
 - `indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine`:
