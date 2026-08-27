@@ -10,7 +10,36 @@ file records what changed and when, file by file.
 ### Added
 
 - `indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine`
-  (new indicator, 1.0.0): companion to the Order Block indicator above.
+  (1.1.0): mobile usability + critical zone visibility.
+  - Table compression for small screens: a new "Compact Table Labels"
+    input (default on) shortens every row name (e.g. "Volume Pressure" ->
+    "Volume", "PCR / Option Skew" -> "PCR"), and the default "Table Font
+    Size" changed from Normal to Small - combined, the 27-row table takes
+    noticeably less screen space, especially on a phone. Full labels and
+    larger sizes are still one setting away.
+  - Renamed "Safe Entry"/"Safe Exit" to "Safe Buy Entry"/"Safe Sell Entry"
+    throughout (bubble text, alerts, alertcondition names, input labels) -
+    reframes both as entry points for opposite directions (long vs short)
+    rather than entry-vs-exit-of-a-long. The EARLY variants follow the
+    same naming ("EARLY Safe Buy Entry"/"EARLY Safe Sell Entry"). No
+    change to the underlying trigger logic, only the labels.
+  - Added "critical" Demand/Supply zone boxes (green/red, colors
+    configurable) for the single most recent zone of each kind - the same
+    one driving the STR Strength/Price Location/Liquidity Sweep/Breakout/
+    Retest table rows when active - each labeled with its STR score and a
+    new "Unrealized" count: how many prior zones of that kind formed and
+    were replaced by a fresh one without price ever coming back to test
+    them. "Show Critical Demand/Supply Zone Boxes" input, default on.
+    Initially gated on the zone being "active"; fixed same-day after
+    testing showed a Demand box could simply vanish once it aged past
+    Order Block Life or moved too far from price (e.g. after a rally then
+    reversal) while Supply kept showing - the box now always shows the
+    last-formed zone of each kind, fading with a dashed border and
+    "(STALE)" in the label once it's no longer active, instead of
+    disappearing. Default "Demand Zone Border" color darkened from Pine's
+    plain `color.green` to a dark green (`rgb(0,100,0)`) - it doubles as
+    the zone label's background with white text, and the lighter green
+    didn't give enough contrast to read the white text against clearly.
   - 8 fully configurable EMAs (9/20/50/200, each on High AND Low separately,
     each with its own color + line thickness input).
   - Golden/Death Cross on the 9H/20H pair and the 50H/200H pair.

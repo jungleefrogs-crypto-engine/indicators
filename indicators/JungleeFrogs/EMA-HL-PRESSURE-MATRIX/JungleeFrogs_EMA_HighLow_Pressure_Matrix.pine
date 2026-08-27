@@ -5,30 +5,35 @@
 // Title:        JungleeFrogs EMA High/Low Pressure Matrix
 // Description:  Eight fully configurable EMA 9/20/50/200 lines plotted on the
 //               High and Low series (not close), Golden/Death cross on the
-//               9H/20H and 50H/200H pairs, early Safe Entry/Safe Exit bubbles
-//               from EMA9 High/Low slope reversals, a BUY(blue)/SELL(yellow)
-//               pressure fill inside each candle, and a 26-row Force/Pressure
-//               dashboard (22 auto-computed from price/volume/options data,
-//               4 manual macro-context dropdowns) with per-row show/hide and
-//               an adjustable font size. Works on any instrument: rows that
-//               need an options chain (OI Pressure, Volatility/IV, PCR/Skew)
-//               degrade to "N/A" automatically where there is none.
-// Version:      1.0.0
+//               9H/20H and 50H/200H pairs, tuned Safe Buy Entry/Safe Sell
+//               Entry bubbles (plus a faster EARLY variant) from EMA9
+//               High/Low slope reversals, a BUY(blue)/SELL(yellow) pressure
+//               fill inside each candle, the critical Demand/Supply zone
+//               boxes with an Unrealized-zone count, and a 26-row
+//               Force/Pressure dashboard (22 auto-computed from
+//               price/volume/options data, 4 manual macro-context
+//               dropdowns) with per-row show/hide, compact labels, and an
+//               adjustable font size for small screens. Works on any
+//               instrument: rows that need an options chain (OI Pressure,
+//               Volatility/IV, PCR/Skew) degrade to "N/A" automatically
+//               where there is none.
+// Version:      1.1.0
 // Changelog:    See CHANGELOG.md
 // ============================================================================
 
 //@version=6
-indicator("JungleeFrogs \"EMA High/Low Pressure Matrix\"", shorttitle="JF-EMA-HL-PM", overlay=true, max_labels_count=500, max_lines_count=500)
+indicator("JungleeFrogs \"EMA High/Low Pressure Matrix\"", shorttitle="JF-EMA-HL-PM", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=50)
 
 //=========================================================
 // MAIN CONTROLS
 //=========================================================
 groupMain = "Main Controls"
 showCrosses = input.bool(true, "Show Golden/Death Cross Markers", group=groupMain)
-showSafeEntryExit = input.bool(true, "Show Safe Entry/Safe Exit Bubbles", group=groupMain)
+showSafeEntryExit = input.bool(true, "Show Safe Buy/Sell Entry Bubbles", group=groupMain)
 showCandlePressure = input.bool(true, "Show BUY(Blue)/SELL(Yellow) Pressure Inside Candle", group=groupMain)
 showTable = input.bool(true, "Show Force/Pressure Table", group=groupMain)
-tableFontSizeInput = input.string("Normal", "Table Font Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=groupMain)
+compactLabels = input.bool(true, "Compact Table Labels (shorter row names, recommended for mobile)", group=groupMain)
+tableFontSizeInput = input.string("Small", "Table Font Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=groupMain, tooltip="Defaults to Small so the 27-row table doesn't take over the whole screen on a phone. Combine with Compact Table Labels, and hide any row you don't need via Table Row Visibility below, for the smallest footprint.")
 tablePositionInput = input.string("Top Right", "Table Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupMain)
 colRedTextCellBg = input.color(color.new(color.yellow, 0), "Table Background When Text Is RED", group=groupMain)
 
@@ -101,27 +106,35 @@ colPivotLevels = input.color(color.new(color.rgb(255, 215, 0), 0), "Pivot/R/S Co
 widPivotLevels = input.int(1, "Pivot/R/S Line Thickness", minval=1, maxval=6, group=groupPivot)
 
 //=========================================================
-// INTERNAL ZONE DETECTION (Demand/Supply math only - no boxes drawn)
+// DEMAND / SUPPLY ZONE DETECTION - critical zone boxes + unrealized counts
 //=========================================================
-groupZone = "Internal Zone Detection (no boxes drawn)"
+groupZone = "Demand / Supply Zones"
 obLookback = input.int(20, "Order Block Search Lookback", minval=3, group=groupZone)
 obLifeBars = input.int(40, "Order Block Life (Bars)", minval=1, group=groupZone)
 obMaxDistanceATR = input.float(6.0, "Order Block Max Distance From Price (ATR, 0=disabled)", minval=0.0, step=0.5, group=groupZone)
 zoneNearATR = input.float(0.75, "Near-Zone Distance (ATR)", minval=0.1, step=0.05, group=groupZone)
 compressionATR = input.float(1.0, "Range Compression Max Gap (ATR)", minval=0.1, step=0.05, group=groupZone)
 retestWindowBars = input.int(20, "Retest Confirmation Window (Bars)", minval=1, group=groupZone)
+showCriticalZones = input.bool(true, "Show Critical Demand/Supply Zone Boxes", group=groupZone, tooltip="Draws the single most recent Demand zone and Supply zone - the same ones driving the STR Strength/Price Location/Liquidity Sweep/Breakout/Retest table rows when active - plus how many prior zones of each kind were never revisited by price before being replaced (Unrealized count). Stays visible even after a zone ages past Order Block Life or moves too far from price to still be 'active' - it just fades and is marked (STALE) instead of disappearing.")
+colDemandZoneFill = input.color(color.new(color.green, 82), "Demand Zone Fill", group=groupZone)
+// A darker green than Pine's plain color.green - this also doubles as the
+// zone label's background (with white text), and the default green was too
+// bright for white text to read clearly against it.
+colDemandZoneBorder = input.color(color.rgb(0, 100, 0), "Demand Zone Border", group=groupZone)
+colSupplyZoneFill = input.color(color.new(color.red, 82), "Supply Zone Fill", group=groupZone)
+colSupplyZoneBorder = input.color(color.red, "Supply Zone Border", group=groupZone)
 
 //=========================================================
 // SAFE ENTRY / SAFE EXIT
 //=========================================================
-groupSafe = "Safe Entry / Safe Exit"
-safeCooldownBars = input.int(5, "Safe Entry/Exit Cooldown Bars", minval=1, group=groupSafe)
+groupSafe = "Safe Buy Entry / Safe Sell Entry"
+safeCooldownBars = input.int(5, "Safe Buy/Sell Entry Cooldown Bars", minval=1, group=groupSafe)
 safeConfirmBars = input.int(2, "Confirmation Bars", minval=1, maxval=5, group=groupSafe, tooltip="How many consecutive bars the EMA9 slope reversal must hold before firing. 1 = fire on the very first tick (fastest, noisiest). 2-3 filters out a single-bar pullback wiggle inside an intact trend, at the cost of firing a bar or two later.")
-safeRequireConfluence = input.bool(true, "Require Both EMA9 High & Low To Agree", group=groupSafe, tooltip="A Safe Exit needs EMA9-Low to also not be rising, not just EMA9-High ticking down - otherwise a normal pause inside an intact uptrend (Low still climbing) gets flagged as an exit right before the rally continues. Mirrored for Safe Entry.")
+safeRequireConfluence = input.bool(true, "Require Both EMA9 High & Low To Agree", group=groupSafe, tooltip="A Safe Sell Entry needs EMA9-Low to also not be rising, not just EMA9-High ticking down - otherwise a normal pause inside an intact uptrend (Low still climbing) gets flagged as a sell entry right before the rally continues. Mirrored for Safe Buy Entry.")
 safeMinSlopeATR = input.float(0.05, "Minimum EMA9 Slope Change (ATR)", minval=0.0, step=0.01, group=groupSafe, tooltip="Filters out sub-noise EMA9 wiggles - the slope reversal must move at least this many ATRs over the confirmation window to count.")
-colSafeEntry = input.color(color.new(color.lime, 0), "Safe Entry Bubble Color", group=groupSafe)
-colSafeExit  = input.color(color.new(color.red, 0), "Safe Exit Bubble Color", group=groupSafe)
-showEarlySafeSignals = input.bool(true, "Show EARLY Safe Entry/Exit (1 candle ahead, less reliable)", group=groupSafe, tooltip="Fires on momentum deceleration - the EMA9 side is still moving the old direction but slowing down - one candle before the confirmed Safe Entry/Exit. Faster warning, but a genuine early signal will sometimes not follow through into a confirmed one.")
+colSafeEntry = input.color(color.new(color.lime, 0), "Safe Buy Entry Bubble Color", group=groupSafe)
+colSafeExit  = input.color(color.new(color.red, 0), "Safe Sell Entry Bubble Color", group=groupSafe)
+showEarlySafeSignals = input.bool(true, "Show EARLY Safe Buy/Sell Entry (1 candle ahead, less reliable)", group=groupSafe, tooltip="Fires on momentum deceleration - the EMA9 side is still moving the old direction but slowing down - one candle before the confirmed Safe Buy/Sell Entry. Faster warning, but a genuine early signal will sometimes not follow through into a confirmed one.")
 
 //=========================================================
 // CANDLE BUY/SELL PRESSURE FILL
@@ -346,6 +359,20 @@ var float supplyLow = na
 var int supplyBorn = na
 var float supplyScoreStored = na
 
+// "Unrealized" tracking: a zone is marked tested the first time price
+// re-enters its range after formation. If it gets replaced by a fresh zone
+// while still untested - price left and never came back to interact with
+// it at all - it counts toward the unrealized total. Checked every bar,
+// against whichever zone is currently stored, before it can be overwritten.
+var bool demandZoneTested = false
+var bool supplyZoneTested = false
+var int demandUnrealizedCount = 0
+var int supplyUnrealizedCount = 0
+if not demandZoneTested and not na(demandHigh) and not na(demandLow) and low <= demandHigh and high >= demandLow
+    demandZoneTested := true
+if not supplyZoneTested and not na(supplyHigh) and not na(supplyLow) and low <= supplyHigh and high >= supplyLow
+    supplyZoneTested := true
+
 if bullBOS
     float bestBody = 0.0
     float bestHigh = na
@@ -363,10 +390,13 @@ if bullBOS
                 bestScore := score
                 bestOffset := i
     if not na(bestOffset)
+        if not na(demandHigh) and not demandZoneTested
+            demandUnrealizedCount += 1
         demandHigh := bestHigh
         demandLow := bestLow
         demandBorn := bar_index - bestOffset
         demandScoreStored := bestScore
+        demandZoneTested := false
 
 if bearBOS
     float bestBody2 = 0.0
@@ -385,10 +415,13 @@ if bearBOS
                 bestScore2 := score2
                 bestOffset2 := i
     if not na(bestOffset2)
+        if not na(supplyHigh) and not supplyZoneTested
+            supplyUnrealizedCount += 1
         supplyHigh := bestHigh2
         supplyLow := bestLow2
         supplyBorn := bar_index - bestOffset2
         supplyScoreStored := bestScore2
+        supplyZoneTested := false
 
 demandTooFar = obMaxDistanceATR > 0 and not na(demandHigh) and atrVal > 0 and math.abs(close - demandHigh) > atrVal * obMaxDistanceATR
 supplyTooFar = obMaxDistanceATR > 0 and not na(supplyLow) and atrVal > 0 and math.abs(close - supplyLow) > atrVal * obMaxDistanceATR
@@ -702,6 +735,49 @@ macroBull = manualMacro == "Bullish"
 macroBear = manualMacro == "Bearish"
 
 //=========================================================
+// CRITICAL DEMAND/SUPPLY ZONE BOXES
+//=========================================================
+// Draws only the single most recent active zone of each kind - the same one
+// already driving the STR Strength/Price Location/Liquidity Sweep/Breakout/
+// Retest table rows - plus the running Unrealized count: how many prior
+// zones of that kind formed and got replaced without price ever coming
+// back to test them.
+var box demandZoneBox = na
+var box supplyZoneBox = na
+var label demandZoneLabel = na
+var label supplyZoneLabel = na
+
+if barstate.islast
+    if not na(demandZoneBox)
+        box.delete(demandZoneBox)
+    if not na(supplyZoneBox)
+        box.delete(supplyZoneBox)
+    if not na(demandZoneLabel)
+        label.delete(demandZoneLabel)
+    if not na(supplyZoneLabel)
+        label.delete(supplyZoneLabel)
+
+    // Draw the last-formed zone of each kind unconditionally (not gated on
+    // demandActive/supplyActive), so a Demand or Supply box doesn't just
+    // vanish once it ages past Order Block Life or moves too far from
+    // price - it fades out and is marked (STALE) instead, so you always
+    // see where the last one was and can tell at a glance whether it's
+    // still current.
+    if showCriticalZones and not na(demandHigh) and not na(demandLow)
+        demandBoxFill = demandActive ? colDemandZoneFill : color.new(colDemandZoneFill, 92)
+        demandBoxBorder = demandActive ? colDemandZoneBorder : color.new(colDemandZoneBorder, 60)
+        demandStatusText = demandActive ? "" : " (STALE)"
+        demandZoneBox := box.new(left=demandBorn, top=demandHigh, right=bar_index + 1, bottom=demandLow, xloc=xloc.bar_index, bgcolor=demandBoxFill, border_color=demandBoxBorder, border_style=demandActive ? line.style_solid : line.style_dashed)
+        demandZoneLabel := label.new(bar_index, demandHigh, "DEMAND" + demandStatusText + "\nSTR: " + str.tostring(demandScoreStored, "#.0") + "\nUNREALIZED: " + str.tostring(demandUnrealizedCount), style=label.style_label_left, color=demandBoxBorder, textcolor=color.white, size=size.small)
+
+    if showCriticalZones and not na(supplyHigh) and not na(supplyLow)
+        supplyBoxFill = supplyActive ? colSupplyZoneFill : color.new(colSupplyZoneFill, 92)
+        supplyBoxBorder = supplyActive ? colSupplyZoneBorder : color.new(colSupplyZoneBorder, 60)
+        supplyStatusText = supplyActive ? "" : " (STALE)"
+        supplyZoneBox := box.new(left=supplyBorn, top=supplyHigh, right=bar_index + 1, bottom=supplyLow, xloc=xloc.bar_index, bgcolor=supplyBoxFill, border_color=supplyBoxBorder, border_style=supplyActive ? line.style_solid : line.style_dashed)
+        supplyZoneLabel := label.new(bar_index, supplyHigh, "SUPPLY" + supplyStatusText + "\nSTR: " + str.tostring(supplyScoreStored, "#.0") + "\nUNREALIZED: " + str.tostring(supplyUnrealizedCount), style=label.style_label_left, color=supplyBoxBorder, textcolor=color.white, size=size.small)
+
+//=========================================================
 // CANDLE BUY(Blue)/SELL(Yellow) PRESSURE FILL
 //=========================================================
 var line[] pressureLines = array.new_line()
@@ -791,12 +867,12 @@ plotshape(showCrosses and deathCross1 ? ema20h : na, title="Death Cross 9H/20H",
 plotshape(showCrosses and goldenCross2 ? ema200h : na, title="Golden Cross 50H/200H", text="GOLDEN\nCROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
 plotshape(showCrosses and deathCross2 ? ema200h : na, title="Death Cross 50H/200H", text="DEATH\nCROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
 
-plotshape(safeEntrySignal ? low : na, title="Safe Entry Bubble", text="SAFE\nENTRY", location=location.absolute, style=shape.labelup, size=size.normal, color=colSafeEntry, textcolor=color.black)
-plotshape(safeExitSignal ? high : na, title="Safe Exit Bubble", text="SAFE\nEXIT", location=location.absolute, style=shape.labeldown, size=size.normal, color=colSafeExit, textcolor=color.white)
+plotshape(safeEntrySignal ? low : na, title="Safe Buy Entry Bubble", text="SAFE BUY\nENTRY", location=location.absolute, style=shape.labelup, size=size.normal, color=colSafeEntry, textcolor=color.black)
+plotshape(safeExitSignal ? high : na, title="Safe Sell Entry Bubble", text="SAFE SELL\nENTRY", location=location.absolute, style=shape.labeldown, size=size.normal, color=colSafeExit, textcolor=color.white)
 // Smaller and separately labeled "EARLY" so it never reads as the same,
 // fully-confirmed signal - it's a faster but less reliable heads-up.
-plotshape(earlySafeEntrySignal ? low : na, title="EARLY Safe Entry Bubble", text="EARLY\nENTRY", location=location.absolute, style=shape.labelup, size=size.small, color=color.new(colSafeEntry, 40), textcolor=color.black)
-plotshape(earlySafeExitSignal ? high : na, title="EARLY Safe Exit Bubble", text="EARLY\nEXIT", location=location.absolute, style=shape.labeldown, size=size.small, color=color.new(colSafeExit, 40), textcolor=color.white)
+plotshape(earlySafeEntrySignal ? low : na, title="EARLY Safe Buy Entry Bubble", text="EARLY BUY\nENTRY", location=location.absolute, style=shape.labelup, size=size.small, color=color.new(colSafeEntry, 40), textcolor=color.black)
+plotshape(earlySafeExitSignal ? high : na, title="EARLY Safe Sell Entry Bubble", text="EARLY SELL\nENTRY", location=location.absolute, style=shape.labeldown, size=size.small, color=color.new(colSafeExit, 40), textcolor=color.white)
 
 //=========================================================
 // FORCE / PRESSURE TABLE - 26 rows, dynamic show/hide, adjustable font
@@ -905,107 +981,107 @@ if barstate.islast and showTable
     // fixed index per row leaving a blank space where a hidden row used to be.
     int row = 1
     if showRowMomentum
-        table.cell(forceTable, 0, row, "Momentum", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Mom" : "Momentum", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, momDisplay, text_color=momColor, bgcolor=f_row_bg(momColor), text_size=tableValueSize)
         row := row + 1
     if showRowTrend
-        table.cell(forceTable, 0, row, "Trend Strength", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Trend" : "Trend Strength", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, trendDisplay, text_color=trendColor, bgcolor=f_row_bg(trendColor), text_size=tableValueSize)
         row := row + 1
     if showRowVolume
-        table.cell(forceTable, 0, row, "Volume Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Volume" : "Volume Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, volDisplay, text_color=volColor, bgcolor=f_row_bg(volColor), text_size=tableValueSize)
         row := row + 1
     if showRowOi
-        table.cell(forceTable, 0, row, "OI Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "OI" : "OI Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, oiDisplay, text_color=oiColor, bgcolor=f_row_bg(oiColor), text_size=tableValueSize)
         row := row + 1
     if showRowStr
-        table.cell(forceTable, 0, row, "STR Strength", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "STR" : "STR Strength", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, strDisplay, text_color=strColor, bgcolor=f_row_bg(strColor), text_size=tableValueSize)
         row := row + 1
     if showRowIv
-        table.cell(forceTable, 0, row, "Volatility / IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "IV" : "Volatility / IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, ivDisplay, text_color=ivColor, bgcolor=f_row_bg(ivColor), text_size=tableValueSize)
         row := row + 1
     if showRowLocation
-        table.cell(forceTable, 0, row, "Price Location", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Price" : "Price Location", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, locDisplay, text_color=locColor, bgcolor=f_row_bg(locColor), text_size=tableValueSize)
         row := row + 1
     if showRowSweep
-        table.cell(forceTable, 0, row, "Liquidity Sweep", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Sweep" : "Liquidity Sweep", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, sweepDisplay, text_color=sweepColor, bgcolor=f_row_bg(sweepColor), text_size=tableValueSize)
         row := row + 1
     if showRowBreakout
-        table.cell(forceTable, 0, row, "Breakout Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Breakout" : "Breakout Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, breakoutDisplay, text_color=breakoutColor, bgcolor=f_row_bg(breakoutColor), text_size=tableValueSize)
         row := row + 1
     if showRowRetest
-        table.cell(forceTable, 0, row, "Retest Confirmation", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Retest" : "Retest Confirmation", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, retestDisplay, text_color=retestColor, bgcolor=f_row_bg(retestColor), text_size=tableValueSize)
         row := row + 1
     if showRowBody
-        table.cell(forceTable, 0, row, "Candle Body Power", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Body" : "Candle Body Power", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, bodyDisplay, text_color=bodyColor, bgcolor=f_row_bg(bodyColor), text_size=tableValueSize)
         row := row + 1
     if showRowWick
-        table.cell(forceTable, 0, row, "Wick Rejection", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Wick" : "Wick Rejection", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, wickDisplay, text_color=wickColor, bgcolor=f_row_bg(wickColor), text_size=tableValueSize)
         row := row + 1
     if showRowEmaPressure
-        table.cell(forceTable, 0, row, "EMA Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "EMA" : "EMA Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, emaPressureDisplay, text_color=emaPressureColor, bgcolor=f_row_bg(emaPressureColor), text_size=tableValueSize)
         row := row + 1
     if showRowVwap
-        table.cell(forceTable, 0, row, "VWAP Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "VWAP" : "VWAP Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, vwapDisplay, text_color=vwapColor, bgcolor=f_row_bg(vwapColor), text_size=tableValueSize)
         row := row + 1
     if showRowMacd
-        table.cell(forceTable, 0, row, "MACD Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "MACD" : "MACD Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, macdDisplay, text_color=macdColor, bgcolor=f_row_bg(macdColor), text_size=tableValueSize)
         row := row + 1
     if showRowMtfAlign
-        table.cell(forceTable, 0, row, "MTF Alignment", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "MTF" : "MTF Alignment", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, mtfDisplay, text_color=mtfColor, bgcolor=f_row_bg(mtfColor), text_size=tableValueSize)
         row := row + 1
     if showRowDivergence
-        table.cell(forceTable, 0, row, "Divergence", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Div" : "Divergence", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, divDisplay, text_color=divColor, bgcolor=f_row_bg(divColor), text_size=tableValueSize)
         row := row + 1
     if showRowCompression
-        table.cell(forceTable, 0, row, "Range Compression", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Range" : "Range Compression", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, compDisplay, text_color=compColor, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
         row := row + 1
     if showRowAtr
-        table.cell(forceTable, 0, row, "ATR Expansion", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "ATR" : "ATR Expansion", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, atrDisplay, text_color=atrColor, bgcolor=f_row_bg(atrColor), text_size=tableValueSize)
         row := row + 1
     if showRowGap
-        table.cell(forceTable, 0, row, "Gap Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Gap" : "Gap Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, gapDisplay, text_color=gapColor, bgcolor=f_row_bg(gapColor), text_size=tableValueSize)
         row := row + 1
     if showRowPcr
-        table.cell(forceTable, 0, row, "PCR / Option Skew", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "PCR" : "PCR / Option Skew", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, pcrDisplay, text_color=pcrColor, bgcolor=f_row_bg(pcrColor), text_size=tableValueSize)
         row := row + 1
     if showRowTime
-        table.cell(forceTable, 0, row, "Time Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Time" : "Time Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, timeDisplay, text_color=timeColor, bgcolor=f_row_bg(timeColor), text_size=tableValueSize)
         row := row + 1
     if showRowNews
-        table.cell(forceTable, 0, row, "News / Event Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "News" : "News / Event Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, newsDisplay, text_color=newsColor, bgcolor=f_row_bg(newsColor), text_size=tableValueSize)
         row := row + 1
     if showRowBreadth
-        table.cell(forceTable, 0, row, "Index / Sector Breadth", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Breadth" : "Index / Sector Breadth", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, breadthDisplay, text_color=breadthColor, bgcolor=f_row_bg(breadthColor), text_size=tableValueSize)
         row := row + 1
     if showRowGlobal
-        table.cell(forceTable, 0, row, "Global Market Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Global" : "Global Market Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, globalDisplay, text_color=globalColor, bgcolor=f_row_bg(globalColor), text_size=tableValueSize)
         row := row + 1
     if showRowMacro
-        table.cell(forceTable, 0, row, "Currency / Bond / Crude Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(forceTable, 0, row, compactLabels ? "Macro" : "Currency / Bond / Crude Pressure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(forceTable, 1, row, macroDisplay, text_color=macroColor, bgcolor=f_row_bg(macroColor), text_size=tableValueSize)
         row := row + 1
 
@@ -1016,17 +1092,17 @@ if barstate.islast and not showTable
 // ALERTS
 //=========================================================
 if safeEntrySignal
-    alert("JF EMA-HL SAFE ENTRY | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    alert("JF EMA-HL SAFE BUY ENTRY | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
 if safeExitSignal
-    alert("JF EMA-HL SAFE EXIT | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    alert("JF EMA-HL SAFE SELL ENTRY | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
 if earlySafeEntrySignal
-    alert("JF EMA-HL EARLY SAFE ENTRY | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    alert("JF EMA-HL EARLY SAFE BUY ENTRY | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
 if earlySafeExitSignal
-    alert("JF EMA-HL EARLY SAFE EXIT | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    alert("JF EMA-HL EARLY SAFE SELL ENTRY | " + syminfo.ticker + " " + timeframe.period + " | Close: " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
 
-alertcondition(safeEntrySignal, "JF EMA-HL Safe Entry", "Safe Entry bubble on {{ticker}} {{interval}}")
-alertcondition(safeExitSignal, "JF EMA-HL Safe Exit", "Safe Exit bubble on {{ticker}} {{interval}}")
-alertcondition(earlySafeEntrySignal, "JF EMA-HL EARLY Safe Entry", "EARLY Safe Entry bubble on {{ticker}} {{interval}}")
-alertcondition(earlySafeExitSignal, "JF EMA-HL EARLY Safe Exit", "EARLY Safe Exit bubble on {{ticker}} {{interval}}")
+alertcondition(safeEntrySignal, "JF EMA-HL Safe Buy Entry", "Safe Buy Entry bubble on {{ticker}} {{interval}}")
+alertcondition(safeExitSignal, "JF EMA-HL Safe Sell Entry", "Safe Sell Entry bubble on {{ticker}} {{interval}}")
+alertcondition(earlySafeEntrySignal, "JF EMA-HL EARLY Safe Buy Entry", "EARLY Safe Buy Entry bubble on {{ticker}} {{interval}}")
+alertcondition(earlySafeExitSignal, "JF EMA-HL EARLY Safe Sell Entry", "EARLY Safe Sell Entry bubble on {{ticker}} {{interval}}")
 alertcondition(goldenCross1 or goldenCross2, "JF EMA-HL Golden Cross", "Golden Cross (9H/20H or 50H/200H) on {{ticker}} {{interval}}")
 alertcondition(deathCross1 or deathCross2, "JF EMA-HL Death Cross", "Death Cross (9H/20H or 50H/200H) on {{ticker}} {{interval}}")
