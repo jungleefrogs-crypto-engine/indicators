@@ -207,6 +207,11 @@ file records what changed and when, file by file.
     Shows "N/A" on instruments with no option premium data (e.g. spot crypto).
   - `emaLineWidth` input (default 3, was a fixed 2): controls the plotted
     thickness of all four EMA 9/20/50/200 lines together.
+  - Added a plotted VWAP line, styled like the EMAs: its own color
+    (`colVWAP`), its own thickness (`vwapLineWidth`), and its own "Show
+    VWAP" visibility checkbox. VWAP was already computed and used
+    internally (Probability engine, Safe Entry/Exit) but was never
+    actually drawn on the chart.
 
 - Repository scaffolding: `README.md`, `LICENSE` (MPL-2.0), `CONTRIBUTING.md`,
   `.gitignore`, `.gitattributes`, `.editorconfig`.
