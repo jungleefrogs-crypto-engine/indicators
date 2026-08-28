@@ -150,6 +150,30 @@ file records what changed and when, file by file.
   also red - red text on a red background, effectively illegible. Both
   now use `colRedTextCellBg` (yellow) instead.
 
+  Fixed the Dashboard/Screener/Signal Read tables not appearing at all on
+  the native TradingView mobile app (desktop/web worked fine) - the real
+  cause, found from the Pine Editor's own compile warnings: with
+  `calc_on_every_tick=false`, `barstate.islast` is not reliable on an
+  unconfirmed realtime bar, and every table/label/box in this file draws
+  inside `if barstate.islast`. Changed the `strategy()` declaration to
+  `calc_on_every_tick=true`. This does not change trade-entry timing -
+  `buySignalRaw`/`sellSignalRaw` were already separately gated on
+  `barstate.isconfirmed`, so entries/exits still only fire on confirmed
+  bar closes; only the visual drawing code now refreshes reliably.
+
+  Fixed a real correctness bug the same warning pass surfaced: the
+  BOS/CHoCH `ta.crossover()`/`ta.crossunder()` calls ran inside a
+  conditional (`not na(lastSwingHigh) and ta.crossover(...)`) - these
+  functions track bar-to-bar state and must run unconditionally on every
+  bar, or their result can be wrong once the condition starts evaluating
+  true again. Split into an unconditional `structCrossUp`/`structCrossDown`
+  assignment, with the `not na(...)` check applied afterward.
+
+  Removed 4 `alertcondition()` calls the same warning pass flagged as
+  dead code - `alertcondition()` has no effect inside `strategy()`
+  scripts (indicator()-only). The equivalent `alert()` calls just above
+  them already cover all 4 cases and work correctly in strategies.
+
   Added the BUY(Blue)/SELL(Yellow) candle pressure fill, ported from the
   EMA High/Low Pressure Matrix indicator's proven implementation (new
   "Candle Buy/Sell Pressure" input group: show toggle, segment width,

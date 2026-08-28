@@ -40,7 +40,7 @@
 // ============================================================================
 
 //@version=6
-strategy("JungleeFrogs \"Smart Money Edge System\"", shorttitle="JF-SMC-EDGE", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=50, dynamic_requests=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=10, commission_type=strategy.commission.percent, commission_value=0.05, calc_on_every_tick=false)
+strategy("JungleeFrogs \"Smart Money Edge System\"", shorttitle="JF-SMC-EDGE", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=50, dynamic_requests=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=10, commission_type=strategy.commission.percent, commission_value=0.05, calc_on_every_tick=true)
 
 //=========================================================
 // MAIN CONTROLS
@@ -361,8 +361,10 @@ if not na(structPivotLow)
 // BOS = a break that continues the prevailing structure bias.
 // CHoCH = a break that goes AGAINST the prevailing bias - the first sign of a
 // reversal - and it is what flips structureBias to the new side.
-structBosUpRaw = not na(lastSwingHigh) and ta.crossover(close, lastSwingHigh)
-structBosDownRaw = not na(lastSwingLow) and ta.crossunder(close, lastSwingLow)
+structCrossUp = ta.crossover(close, lastSwingHigh)
+structCrossDown = ta.crossunder(close, lastSwingLow)
+structBosUpRaw = not na(lastSwingHigh) and structCrossUp
+structBosDownRaw = not na(lastSwingLow) and structCrossDown
 chochBull = structBosUpRaw and structureBias == "BEARISH"
 chochBear = structBosDownRaw and structureBias == "BULLISH"
 bosBull = structBosUpRaw and structureBias != "BEARISH"
@@ -1210,8 +1212,3 @@ if showTrapWarnings and trapHigh
     alert(f_json("TRAP_WARNING"), alert.freq_once_per_bar_close)
 if showStructure and (chochBull or chochBear)
     alert(f_json(chochBull ? "CHOCH_BULL" : "CHOCH_BEAR"), alert.freq_once_per_bar_close)
-
-alertcondition(buySignal, "JF SMC Buy Signal", "JungleeFrogs SMC Edge System BUY on {{ticker}} {{interval}}")
-alertcondition(sellSignal, "JF SMC Sell Signal", "JungleeFrogs SMC Edge System SELL on {{ticker}} {{interval}}")
-alertcondition(chochBull or chochBear, "JF SMC CHoCH", "Change of Character on {{ticker}} {{interval}}")
-alertcondition(trapHigh, "JF SMC Trap Warning", "Trap / fake-breakout risk on {{ticker}} {{interval}}")
