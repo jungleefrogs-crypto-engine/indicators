@@ -63,8 +63,7 @@ showRowDivergence = input.bool(true, "PRESSURE: Divergence", group=groupRowVis)
 showRowQuickRisk  = input.bool(true, "PRESSURE: Quick Risk", group=groupRowVis)
 showRowAction     = input.bool(true, "PRESSURE: Action", group=groupRowVis)
 showRowLevels     = input.bool(true, "PRESSURE: SL/T1/Exit", group=groupRowVis)
-showRowBullScore  = input.bool(true, "PRESSURE: Bull Score", group=groupRowVis)
-showRowBearScore  = input.bool(true, "PRESSURE: Bear Score", group=groupRowVis)
+showRowBullScore  = input.bool(true, "PRESSURE: Bull/Bear Score", group=groupRowVis)
 showRowCeIv       = input.bool(true, "PRESSURE: CE IV", group=groupRowVis)
 showRowPeIv       = input.bool(true, "PRESSURE: PE IV", group=groupRowVis)
 // ADX / DMI panel
@@ -1789,12 +1788,8 @@ if barstate.islast and showAmpMacdPredictor and ampShowDashboard
         table.cell(ampDashTable, 4, rightRow, ampLevelsText, text_color=ampLevelsColor, bgcolor=levelsBg, text_size=tableValueSize)
         rightRow := rightRow + 1
     if showRowBullScore
-        table.cell(ampDashTable, 3, rightRow, "Bull Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
-        table.cell(ampDashTable, 4, rightRow, str.tostring(ampBullScore) + "/100", text_color=color.lime, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
-        rightRow := rightRow + 1
-    if showRowBearScore
-        table.cell(ampDashTable, 3, rightRow, "Bear Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
-        table.cell(ampDashTable, 4, rightRow, str.tostring(ampBearScore) + "/100", text_color=color.red, bgcolor=bearScoreBg, text_size=tableValueSize)
+        table.cell(ampDashTable, 3, rightRow, "Bull/Bear Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(ampDashTable, 4, rightRow, str.tostring(ampBullScore) + "/100 or " + str.tostring(ampBearScore) + "/100", text_color=ampBullScore > ampBearScore ? color.lime : ampBearScore > ampBullScore ? color.red : color.white, bgcolor=ampBearScore > ampBullScore ? bearScoreBg : color.new(color.black, 0), text_size=tableValueSize)
         rightRow := rightRow + 1
     if showRowCeIv
         table.cell(ampDashTable, 3, rightRow, "CE IV", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)

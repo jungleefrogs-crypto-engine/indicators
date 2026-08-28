@@ -9,6 +9,168 @@ file records what changed and when, file by file.
 
 ### Added
 
+- `indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine`:
+  merged the PRESSURE panel's separate "Bull Score" / "Bear Score" rows
+  into one "Bull/Bear Score" row reading "X/100 or Y/100", colored by
+  whichever side currently leads (lime/red/white). Removed the now-unused
+  `showRowBearScore` row-visibility toggle; `showRowBullScore` (relabeled
+  "PRESSURE: Bull/Bear Score") now controls the single merged row.
+
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`
+  (new, 1.0.0): a `strategy()` (not `indicator()`) so TradingView's Strategy
+  Tester works natively - no separate "backtest mode" toggle needed. Buy/Sell
+  signals reuse the confluence + multi-bar-confirmation EMA9 slope logic
+  proven in the EMA High/Low Pressure Matrix indicator, now gated by Entry
+  Grade and Trap Risk. Combines, in one system: Order Blocks (Demand/Supply
+  zones showing STR, Volume, OI, and a Volatility/ATR-width ratio, each
+  fading to (STALE) instead of vanishing once inactive - same fix as the
+  EMA-HL indicator), Liquidity Sweep/grab detection, Retest confirmation,
+  BOS/CHoCH market structure (Change of Character = the first break against
+  the prevailing HH/HL/LH/LL bias, which is what flips it), a 2-timeframe
+  MTF alignment dashboard, an ADX/DMI Trend Strength filter, Trap/fake-
+  breakout warnings, an Avoid-Chase filter, an ATR-based auto TP1/TP2/SL/
+  Invalidation engine, a 0-100 Market Force Score, an A+/A/B/AVOID Entry
+  Grade, a session filter (Opening/Mid-Day/Closing), a fixed 10-symbol
+  screener table, and JSON-formatted alert/webhook payloads (via
+  `alert_message` on `strategy.entry`/`strategy.exit`, plus plain
+  `alert()` calls). EMA 9/20/50/200 High+Low and VWAP are each independently
+  configurable (show/color/thickness), plus one shared Plot Style dropdown
+  (Pine's `plot()` has no dashed/dotted style, only Line/Step Line/Circles/
+  Cross). Six filters (Trap detection, Liquidity sweep, Advance entry, MTF
+  alignment, Trigger/invalidation, Avoid-chase) are independently toggleable,
+  each with its own dashboard row visibility control.
+
+  Three items from the spec are flagged in the file's own header rather than
+  implemented as code, because Pine/TradingView cannot do them at all:
+  - The screener is a fixed 10 symbols, not "many" - Pine hard-caps every
+    script at 40 total `request.security()` calls, shared with the MTF
+    dashboard and options/OI machinery.
+  - "Backtest mode" IS this script (see above) - Pine has no way for one
+    script to be both an `indicator()` and a `strategy()`.
+  - Invite-only/paid access cannot be coded in Pine at all - there is no
+    license-check or user-identity API in the language. It's a TradingView
+    website feature (Manage Access, after publishing), unrelated to this
+    file's contents - no in-script "access toggle" was built, since it
+    would provide zero real protection and be actively misleading.
+
+  Compile-error fix found while pasting the script into TradingView: the
+  Buy/Sell `plotshape()` labels tried to build their text by concatenating
+  `entryGradeText` onto "BUY"/"SELL" - `plotshape()`'s `text=` must be a
+  const string and cannot be built from a series value at all (unlike
+  `label.new()`, which has no such restriction). Fixed by keeping the
+  plotshape's text as the fixed literal "BUY"/"SELL" (so it still persists
+  automatically across all of history, matching the other two scripts'
+  proven Safe Entry/Exit pattern), and adding a separate `label.new()` next
+  to it that shows the exact grade (dynamic text is fine there) for the
+  latest signal only.
+
+  Added "Clean Chart Mode" (default on) after testing showed the raw BOS
+  triangles + HH/HL/LH/LL swing labels + Golden/Death Cross text buried the
+  actionable output (Buy/Sell labels, zones, dashboard) under structure
+  noise on a busy chart. When on, it forces off BOS triangles, swing
+  labels, and cross-label text regardless of their own settings - CHoCH
+  stays visible even in Clean Mode, since it's the rare, meaningful
+  reversal signal rather than routine noise. Turn it off for the full
+  raw-structure view.
+
+  Fixed "Dashboard Font Size" = Tiny making the table effectively
+  disappear: the value column dropped all the way to `size.tiny`, which
+  TradingView renders too small to read at normal zoom - easy to mistake
+  for the table not loading at all. Removed "Tiny" from the dropdown
+  (`options=["Small", "Normal", "Large", "Huge"]`); "Small" (the default)
+  is now the floor and was already confirmed visible.
+
+  Defensively reordered the on-`barstate.islast` drawing code: Main
+  Dashboard and Multi-Symbol Screener table sections now execute before
+  Trap Warning Label / Order Block Zone Boxes / Branding Label, so the two
+  highest-value elements render regardless of anything unresolved further
+  down that chain. Pure reorder, no logic changes - verified line-for-line
+  (same 1010 lines, identical sorted content, no drops/duplicates at the
+  three splice points).
+
+  Added a third on-chart table, "Signal Read Legend" ("Show Signal Read
+  Legend Table", default on, own "Signal Read Position" dropdown) - a
+  plain-English "what does this row mean" line for every Dashboard row
+  currently visible, in the same order, driven by the same per-row
+  visibility toggles so the two tables never drift out of sync.
+
+  Added, then removed, a Settings-checkbox "fold to header only" control
+  for all three tables: Pine has no way to add a clickable fold/unfold
+  control on the chart itself (no in-script click handling on drawings at
+  all), and a Settings-only checkbox just looked like a broken button once
+  toggled on with no visible way back. Each table's own "Show ..." toggle,
+  plus every Dashboard row's individual show/hide checkbox, is the
+  supported way to control what's visible.
+
+  Fixed a stale Demand/Supply zone box silently losing its "WIDTH: #.##x
+  ATR" line: `demandVolatilityRatio`/`supplyVolatilityRatio` were gated on
+  `demandActive`/`supplyActive`, so once a zone aged into "(STALE)" the
+  ratio evaluated to `na` and the WIDTH line vanished from the label -
+  while STR, VOL, and UNREALIZED (all computed from the zone's stored
+  snapshot, not its live active state) kept showing, making the label look
+  inconsistently incomplete. The ratio now only checks that the zone's
+  high/low/ATR are known, matching how the rest of the label already
+  behaves for stale zones.
+
+  Removed the "🐸 JungleeFrogs" on-chart branding label and its section -
+  purely decorative, carried no data, and the user asked for it gone since
+  it added no analytical value. `colBrand` input stays; it still colors
+  the Screener/Signal Read table header rows.
+
+  Added DI+ and DI- columns to the Multi-Symbol Screener table (now 6
+  columns: SYMBOL/BIAS/RSI/ADX/DI+/DI-), sourced from the same `ta.dmi()`
+  call `f_scan()` already ran per symbol (previously computed and
+  discarded) - no added `request.security()` calls. Every numeric column
+  (RSI, ADX, DI+, DI-) now carries its own directional arrow: RSI vs 50,
+  ADX vs the existing "ADX Trend Level" input combined with which DI is
+  dominant (mirrors the Main Dashboard's own Trend row), and DI+/DI- each
+  arrow toward whichever of the pair is currently higher. Each arrow's
+  cell is colored to match - green text for ▲, red text for ▼ (white for
+  → ), with the same red-text/yellow-background convention already used
+  everywhere else in the table for the red case.
+
+  Added a PRICE column (7th, after DI-) to the Screener table - the
+  scanned symbol's current close, which `f_scan()` already fetched via
+  `request.security()` for internal bias calculation but never displayed.
+
+  Split the Dashboard's single "Trigger" row (which only ever showed
+  whichever side matched the current Entry Grade) into two always-visible
+  rows: "B Trigger" (buy-side price level, lime text) and "S Trigger"
+  (sell-side, red text) - both levels are now visible together instead of
+  one being hidden. Mirrored the same split on the Signal Read legend
+  table. Both tables' row counts bumped from 14 to 15 to fit the extra
+  row; the "Trigger / Invalidation" row-visibility toggle is renamed
+  "B Trigger / S Trigger" and now shows/hides both rows together.
+
+  Fixed the new S Trigger row's value cell (red text) missing the
+  yellow background every other red-text cell in this file already gets
+  via `colRedTextCellBg`. While checking for other gaps, also found and
+  fixed a real pre-existing bug in the ACTION banner: `actionBg` was solid
+  red for both AVOID and SELL NOW, the same cases where `actionColor` is
+  also red - red text on a red background, effectively illegible. Both
+  now use `colRedTextCellBg` (yellow) instead.
+
+  Added the BUY(Blue)/SELL(Yellow) candle pressure fill, ported from the
+  EMA High/Low Pressure Matrix indicator's proven implementation (new
+  "Candle Buy/Sell Pressure" input group: show toggle, segment width,
+  visible history in bars, buy/sell colors). A 6-vote blend (trend, MACD,
+  EMA stack, VWAP, volume, candle body/close-position) sets the blue/
+  yellow split filled inside each candle's own high-low range. Added the
+  one vote that didn't already exist here (`bodyBull`/`bodyBear`, from
+  body-to-range ratio and close position within the bar) - every other
+  vote (`trendBull`, `macdBull`, `emaBull`, `vwapBull`, `volBull`) was
+  already computed elsewhere in this file and reused as-is.
+
+  Fixed a stale Demand/Supply zone box drawing in a structurally
+  contradictory position - e.g. a stale (invalidated) Demand/floor zone
+  left sitting above the currently active Supply/ceiling zone, which
+  reads as nonsensical since a floor can never legitimately be above a
+  ceiling. Each zone was drawn independently with no awareness of the
+  other, so once one went stale nothing stopped it from being shown on
+  the wrong side of the live one. A stale zone is now suppressed (not
+  drawn) whenever it would sit on the wrong side of the currently active
+  opposite zone; the active zone always keeps showing.
+
 - `indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine`
   (1.1.0): mobile usability + critical zone visibility.
   - Table compression for small screens: a new "Compact Table Labels"

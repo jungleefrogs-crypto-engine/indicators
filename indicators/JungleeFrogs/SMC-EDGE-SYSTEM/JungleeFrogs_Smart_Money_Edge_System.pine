@@ -1,0 +1,1217 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © pine-script-toolkit
+
+// ============================================================================
+// Title:        JungleeFrogs Smart Money Edge System
+// Description:  A Smart-Money-Concepts trading system: Order Blocks, Liquidity
+//               Sweep/Grab detection, BOS/CHoCH market structure, a
+//               multi-timeframe dashboard, a Trend Strength filter, Trap/
+//               fake-breakout warnings, an auto Take-Profit/Stop-Loss/
+//               Invalidation engine, a 0-100 Market Force Score, an A+/A/B/
+//               AVOID Entry Grade, a session filter (Opening/Mid-Day/
+//               Closing), a 10-symbol screener, JSON-formatted webhook
+//               alerts, and native backtesting (this is a strategy(), so
+//               TradingView's Strategy Tester works out of the box). Fully
+//               configurable EMA 9/20/50/200 High+Low lines and VWAP
+//               (color/thickness/style/visibility each), and configurable
+//               Demand/Supply zones showing STR, Volume, OI, and Volatility.
+//
+//               PLATFORM LIMITS (cannot be coded around, by design of Pine/
+//               TradingView - not a bug in this script):
+//               - The screener is capped at 10 fixed symbol slots. Pine
+//                 allows at most 40 request.security() calls per script,
+//                 shared with the MTF dashboard and options/OI machinery.
+//                 There is no way to "scan the whole market" from inside a
+//                 Pine script.
+//               - "Backtest mode" is this script's native mode - it is a
+//                 strategy(), not an indicator(), so it always has access to
+//                 TradingView's Strategy Tester tab. Pine cannot make one
+//                 script be both an indicator() and a strategy() at once.
+//               - Invite-only / paid access CANNOT be implemented in Pine
+//                 code. There is no license-check or user-identity API in
+//                 the language. Invite-only/paid publishing is configured on
+//                 TradingView's website (your profile's "Manage access to
+//                 invite-only scripts" page) AFTER you publish - it has
+//                 nothing to do with this .pine file's contents, and no
+//                 code here can enforce it. This script does not attempt to
+//                 fake that capability.
+// Version:      1.0.0
+// Changelog:    See CHANGELOG.md
+// ============================================================================
+
+//@version=6
+strategy("JungleeFrogs \"Smart Money Edge System\"", shorttitle="JF-SMC-EDGE", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=50, dynamic_requests=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=10, commission_type=strategy.commission.percent, commission_value=0.05, calc_on_every_tick=false)
+
+//=========================================================
+// MAIN CONTROLS
+//=========================================================
+groupMain = "Main Controls"
+showBuySellLabels = input.bool(true, "Show Buy/Sell Labels", group=groupMain)
+showOrderBlocks = input.bool(true, "Show Order Block (Demand/Supply) Zones", group=groupMain)
+showStructure = input.bool(true, "Show BOS/CHoCH Structure Labels", group=groupMain)
+showTrapWarnings = input.bool(true, "Show Trap / Fake-Breakout Warnings", group=groupMain)
+cleanChartMode = input.bool(true, "Clean Chart Mode", group=groupMain, tooltip="Forces off the routine BOS triangles, HH/HL/LH/LL swing labels, and Golden/Death Cross text labels, regardless of their own settings - the chart fills up with those fast and buries the parts that actually drive a decision. CHoCH stays on even in Clean Mode (it's the rare, meaningful reversal signal, not routine noise), along with Buy/Sell labels, Demand/Supply zones, Trap warnings, and the dashboards. Turn this off to see the full raw-structure view.")
+showDashboard = input.bool(true, "Show Main Dashboard", group=groupMain)
+showScreener = input.bool(true, "Show Multi-Symbol Screener Table", group=groupMain)
+showSignalRead = input.bool(true, "Show Signal Read Legend Table", group=groupMain, tooltip="A plain-English 'what does this row mean' table - one line per Dashboard row currently visible, same order.")
+compactLabels = input.bool(true, "Compact Dashboard Labels (recommended for mobile)", group=groupMain)
+tableFontSizeInput = input.string("Small", "Dashboard Font Size", options=["Small", "Normal", "Large", "Huge"], group=groupMain, tooltip="\"Tiny\" was removed - at that size TradingView renders the value column too small to see, making the whole table look like it disappeared. \"Small\" is the smallest reliably visible size.")
+dashboardPositionInput = input.string("Top Right", "Dashboard Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupMain)
+screenerPositionInput = input.string("Bottom Right", "Screener Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupMain)
+signalReadPositionInput = input.string("Middle Right", "Signal Read Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupMain)
+colRedTextCellBg = input.color(color.new(color.yellow, 0), "Table Background When Text Is RED", group=groupMain)
+colBrand = input.color(color.new(color.rgb(0, 200, 150), 0), "JungleeFrogs Brand Color", group=groupMain)
+
+f_table_value_size(_s) =>
+    _s == "Small" ? size.small : _s == "Normal" ? size.normal : _s == "Large" ? size.large : size.huge
+f_table_label_size(_s) =>
+    _s == "Small" ? size.tiny : _s == "Normal" ? size.small : _s == "Large" ? size.normal : size.large
+tableValueSize = f_table_value_size(tableFontSizeInput)
+tableLabelSize = f_table_label_size(tableFontSizeInput)
+f_position(_s) =>
+    _s == "Top Right" ? position.top_right : _s == "Middle Right" ? position.middle_right : _s == "Bottom Right" ? position.bottom_right : _s == "Top Left" ? position.top_left : _s == "Middle Left" ? position.middle_left : position.bottom_left
+dashboardPos = f_position(dashboardPositionInput)
+screenerPos = f_position(screenerPositionInput)
+signalReadPos = f_position(signalReadPositionInput)
+
+//=========================================================
+// EMA HIGH/LOW + VWAP - full per-line configurability
+//=========================================================
+groupEma = "EMA High/Low + VWAP Settings"
+ema1Len = input.int(9, "EMA Length 1", minval=1, group=groupEma)
+ema2Len = input.int(20, "EMA Length 2", minval=1, group=groupEma)
+ema3Len = input.int(50, "EMA Length 3", minval=1, group=groupEma)
+ema4Len = input.int(200, "EMA Length 4", minval=1, group=groupEma)
+plotStyleInput = input.string("Line", "Plot Style (shared by all EMA/VWAP lines)", options=["Line", "Step Line", "Circles", "Cross"], group=groupEma, tooltip="Pine's plot() has no dashed/dotted line style - only these render modes. Applies to all 9 lines below; color/thickness/visibility stay individually configurable per line.")
+plotStyleSel = plotStyleInput == "Line" ? plot.style_line : plotStyleInput == "Step Line" ? plot.style_stepline : plotStyleInput == "Circles" ? plot.style_circles : plot.style_cross
+
+showEma9H = input.bool(true, "Show EMA 9 High", group=groupEma)
+colEma9H = input.color(color.yellow, "EMA 9 High Color", group=groupEma)
+widEma9H = input.int(2, "EMA 9 High Thickness", minval=1, maxval=6, group=groupEma)
+showEma9L = input.bool(true, "Show EMA 9 Low", group=groupEma)
+colEma9L = input.color(color.orange, "EMA 9 Low Color", group=groupEma)
+widEma9L = input.int(2, "EMA 9 Low Thickness", minval=1, maxval=6, group=groupEma)
+
+showEma20H = input.bool(true, "Show EMA 20 High", group=groupEma)
+colEma20H = input.color(color.lime, "EMA 20 High Color", group=groupEma)
+widEma20H = input.int(2, "EMA 20 High Thickness", minval=1, maxval=6, group=groupEma)
+showEma20L = input.bool(true, "Show EMA 20 Low", group=groupEma)
+colEma20L = input.color(color.green, "EMA 20 Low Color", group=groupEma)
+widEma20L = input.int(2, "EMA 20 Low Thickness", minval=1, maxval=6, group=groupEma)
+
+showEma50H = input.bool(true, "Show EMA 50 High", group=groupEma)
+colEma50H = input.color(color.aqua, "EMA 50 High Color", group=groupEma)
+widEma50H = input.int(2, "EMA 50 High Thickness", minval=1, maxval=6, group=groupEma)
+showEma50L = input.bool(true, "Show EMA 50 Low", group=groupEma)
+colEma50L = input.color(color.blue, "EMA 50 Low Color", group=groupEma)
+widEma50L = input.int(2, "EMA 50 Low Thickness", minval=1, maxval=6, group=groupEma)
+
+showEma200H = input.bool(true, "Show EMA 200 High", group=groupEma)
+colEma200H = input.color(color.fuchsia, "EMA 200 High Color", group=groupEma)
+widEma200H = input.int(3, "EMA 200 High Thickness", minval=1, maxval=6, group=groupEma)
+showEma200L = input.bool(true, "Show EMA 200 Low", group=groupEma)
+colEma200L = input.color(color.purple, "EMA 200 Low Color", group=groupEma)
+widEma200L = input.int(3, "EMA 200 Low Thickness", minval=1, maxval=6, group=groupEma)
+
+showVwapLine = input.bool(true, "Show VWAP", group=groupEma)
+colVwap = input.color(color.new(color.white, 0), "VWAP Color", group=groupEma)
+widVwap = input.int(2, "VWAP Thickness", minval=1, maxval=6, group=groupEma)
+
+colGolden = input.color(color.new(color.rgb(255, 215, 0), 0), "Golden Cross Color", group=groupEma)
+colDeath  = input.color(color.new(color.black, 0), "Death Cross Color", group=groupEma)
+
+//=========================================================
+// CANDLE BUY/SELL PRESSURE FILL
+//=========================================================
+groupCandle = "Candle Buy/Sell Pressure"
+showCandlePressure = input.bool(true, "Show BUY(Blue)/SELL(Yellow) Pressure Inside Candle", group=groupCandle)
+candleSegWidth = input.int(6, "Segment Width", minval=1, maxval=20, group=groupCandle)
+candleHistory = input.int(20, "Visible History (Bars)", minval=5, maxval=60, group=groupCandle)
+colBuyPressure = input.color(color.new(color.blue, 0), "BUY Pressure Color", group=groupCandle)
+colSellPressure = input.color(color.new(color.yellow, 0), "SELL Pressure Color", group=groupCandle)
+
+//=========================================================
+// ORDER BLOCKS / DEMAND-SUPPLY ZONES
+//=========================================================
+groupZone = "Order Blocks (Demand / Supply Zones)"
+obLookback = input.int(20, "Order Block Search Lookback", minval=3, group=groupZone)
+obLifeBars = input.int(40, "Order Block Life (Bars)", minval=1, group=groupZone)
+obMaxDistanceATR = input.float(6.0, "Order Block Max Distance From Price (ATR, 0=disabled)", minval=0.0, step=0.5, group=groupZone)
+zoneNearATR = input.float(0.75, "Near-Zone Distance (ATR)", minval=0.1, step=0.05, group=groupZone)
+compressionATR = input.float(1.0, "Range Compression Max Gap (ATR)", minval=0.1, step=0.05, group=groupZone)
+retestWindowBars = input.int(20, "Retest Confirmation Window (Bars)", minval=1, group=groupZone)
+colDemandZoneFill = input.color(color.new(color.green, 82), "Demand Zone Fill", group=groupZone)
+colDemandZoneBorder = input.color(color.rgb(0, 100, 0), "Demand Zone Border", group=groupZone)
+colSupplyZoneFill = input.color(color.new(color.red, 82), "Supply Zone Fill", group=groupZone)
+colSupplyZoneBorder = input.color(color.red, "Supply Zone Border", group=groupZone)
+
+//=========================================================
+// MARKET STRUCTURE (BOS / CHoCH)
+//=========================================================
+groupStruct = "Market Structure (BOS / CHoCH)"
+structLeftBars = input.int(5, "Structure Pivot Left Bars", minval=1, group=groupStruct)
+structRightBars = input.int(5, "Structure Pivot Right Bars", minval=1, group=groupStruct)
+showSwingLabels = input.bool(false, "Show HH/HL/LH/LL Swing Labels", group=groupStruct)
+
+//=========================================================
+// TREND STRENGTH / MOMENTUM / MISC
+//=========================================================
+groupMisc = "Trend Strength & Indicator Settings"
+adxLen = input.int(14, "ADX/DMI Length", minval=1, group=groupMisc)
+adxSmoothLen = input.int(14, "ADX Smoothing", minval=1, group=groupMisc)
+adxTrendLevel = input.float(20.0, "ADX Trend Level", minval=1.0, step=0.5, group=groupMisc)
+atrLen = input.int(14, "ATR Length", minval=1, group=groupMisc)
+rsiLen = input.int(14, "RSI Length", minval=1, group=groupMisc)
+
+//=========================================================
+// MULTI-TIMEFRAME DASHBOARD
+//=========================================================
+groupMtf = "Multi-Timeframe Dashboard"
+mtfEnable = input.bool(true, "Enable MTF Alignment", group=groupMtf)
+mtfTf1 = input.timeframe("15", "MTF Timeframe 1", group=groupMtf)
+mtfTf2 = input.timeframe("60", "MTF Timeframe 2", group=groupMtf)
+
+//=========================================================
+// TAKE-PROFIT / STOP-LOSS / INVALIDATION ENGINE
+//=========================================================
+groupTpSl = "Take-Profit / Stop-Loss / Invalidation"
+slAtrMult = input.float(1.5, "Stop-Loss ATR Multiplier", minval=0.1, step=0.1, group=groupTpSl)
+tp1AtrMult = input.float(1.5, "Take-Profit 1 ATR Multiplier (1R)", minval=0.1, step=0.1, group=groupTpSl)
+tp2AtrMult = input.float(3.0, "Take-Profit 2 ATR Multiplier (2R)", minval=0.1, step=0.1, group=groupTpSl)
+invalidBufferATR = input.float(0.20, "Invalidation Buffer (ATR)", minval=0.0, step=0.05, group=groupTpSl)
+
+//=========================================================
+// MARKET FORCE SCORE / ENTRY GRADE
+//=========================================================
+groupGrade = "Market Force Score / Entry Grade"
+gradeAPlusMin = input.int(85, "A+ Minimum Score", minval=50, maxval=100, group=groupGrade)
+gradeAMin = input.int(70, "A Minimum Score", minval=40, maxval=100, group=groupGrade)
+gradeBMin = input.int(55, "B Minimum Score", minval=20, maxval=100, group=groupGrade)
+minGradeToTradeInput = input.string("B", "Minimum Grade To Take a Backtest Trade", options=["A+", "A", "B", "Any (ignore grade)"], group=groupGrade)
+
+//=========================================================
+// SESSION FILTER
+//=========================================================
+groupSession = "Session Filter (Opening / Mid-Day / Closing)"
+sessionTimezone = input.string("Asia/Kolkata", "Session Timezone", group=groupSession)
+sessionStartHour = input.int(9, "Session Start Hour", minval=0, maxval=23, group=groupSession)
+sessionStartMinute = input.int(15, "Session Start Minute", minval=0, maxval=59, group=groupSession)
+sessionEndHour = input.int(15, "Session End Hour", minval=0, maxval=23, group=groupSession)
+sessionEndMinute = input.int(30, "Session End Minute", minval=0, maxval=59, group=groupSession)
+openingWindowMin = input.int(30, "Opening Window Length (Minutes)", minval=1, maxval=180, group=groupSession)
+closingWindowMin = input.int(30, "Closing Window Length (Minutes)", minval=1, maxval=180, group=groupSession)
+
+//=========================================================
+// TRADE FILTER TOGGLES (each independently configurable, per spec)
+//=========================================================
+groupFilters = "Trade Filter Toggles"
+useTrapDetection = input.bool(true, "Use Trap Detection", group=groupFilters)
+useLiquiditySweep = input.bool(true, "Use Liquidity Sweep Detection", group=groupFilters)
+useAdvanceEntry = input.bool(true, "Use Advance Entry (ADV Watch)", group=groupFilters)
+useMtfAlignment = input.bool(true, "Use MTF Alignment Filter", group=groupFilters)
+useTriggerInvalidation = input.bool(true, "Use Trigger / Invalidation Levels", group=groupFilters)
+useAvoidChase = input.bool(true, "Use Avoid-Chase Logic", group=groupFilters)
+chaseDistanceATR = input.float(2.5, "Avoid-Chase Distance (ATR from EMA9 mid)", minval=0.5, step=0.25, group=groupFilters)
+
+//=========================================================
+// BACKTEST / STRATEGY EXECUTION
+//=========================================================
+groupBacktest = "Backtest / Strategy Execution"
+enableBacktestOrders = input.bool(true, "Place Backtest Orders (uncheck to use as a pure signal indicator)", group=groupBacktest)
+safeCooldownBars = input.int(5, "Signal Cooldown Bars", minval=1, group=groupBacktest)
+safeConfirmBars = input.int(2, "Confirmation Bars", minval=1, maxval=5, group=groupBacktest, tooltip="How many consecutive bars the EMA9 slope reversal must hold before firing. Higher = fewer false signals, later entries.")
+safeRequireConfluence = input.bool(true, "Require Both EMA9 High & Low To Agree", group=groupBacktest, tooltip="A Sell signal also requires EMA9-Low to not be rising right now, not just EMA9-High turning down - otherwise a normal pause inside an intact uptrend gets flagged as a sell right before the rally continues. Mirrored for Buy.")
+safeMinSlopeATR = input.float(0.05, "Minimum EMA9 Slope Change (ATR)", minval=0.0, step=0.01, group=groupBacktest)
+
+//=========================================================
+// WEBHOOK / JSON ALERTS
+//=========================================================
+groupWebhook = "Webhook / JSON Alerts"
+webhookNote = input.bool(true, "Format Alerts As JSON (for TradingView webhook automation)", group=groupWebhook, tooltip="This only formats the alert() and strategy.entry/exit alert_message text as a JSON payload - you still create the actual alert in TradingView (right-click > Add Alert, or the Alert button) and paste your webhook URL into that alert's Notifications tab. Pine cannot send HTTP requests or manage webhook URLs itself.")
+
+//=========================================================
+// MULTI-SYMBOL SCREENER (10 fixed slots - see header note on the 40
+// request.security() platform limit)
+//=========================================================
+groupScreener = "Multi-Symbol Screener (10 slots)"
+scanSym1 = input.symbol("", "Scan Symbol 1 (blank = disabled)", group=groupScreener)
+scanSym2 = input.symbol("", "Scan Symbol 2 (blank = disabled)", group=groupScreener)
+scanSym3 = input.symbol("", "Scan Symbol 3 (blank = disabled)", group=groupScreener)
+scanSym4 = input.symbol("", "Scan Symbol 4 (blank = disabled)", group=groupScreener)
+scanSym5 = input.symbol("", "Scan Symbol 5 (blank = disabled)", group=groupScreener)
+scanSym6 = input.symbol("", "Scan Symbol 6 (blank = disabled)", group=groupScreener)
+scanSym7 = input.symbol("", "Scan Symbol 7 (blank = disabled)", group=groupScreener)
+scanSym8 = input.symbol("", "Scan Symbol 8 (blank = disabled)", group=groupScreener)
+scanSym9 = input.symbol("", "Scan Symbol 9 (blank = disabled)", group=groupScreener)
+scanSym10 = input.symbol("", "Scan Symbol 10 (blank = disabled)", group=groupScreener)
+
+//=========================================================
+// ATM OPTION / OI (auto; degrades to N/A with no option chain)
+//=========================================================
+groupOpt = "ATM Option / OI (auto, N/A when no option chain)"
+autoBuildAtmSymbols = input.bool(true, "Auto Build ATM CE/PE Symbols", group=groupOpt)
+optionExchange = input.string("NSE", "Option Exchange Prefix", group=groupOpt)
+optionRoot = input.string("AUTO", "Option Root / Underlying", group=groupOpt)
+optionRootAutoMode = input.bool(true, "Auto Detect Option Root From Chart", group=groupOpt)
+useImmediateExpiry = input.bool(true, "Always Use Immediate Expiry", group=groupOpt)
+immediateExpiryDayNo = input.int(2, "Immediate Expiry Day Number (Mon=1..Fri=5)", minval=1, maxval=5, group=groupOpt)
+optionExpiryYYMMDD = input.string("", "Manual Expiry YYMMDD (Immediate Expiry Off)", group=groupOpt)
+expiryCutoffHourIST = input.int(15, "Expiry Cutoff Hour IST", minval=0, maxval=23, group=groupOpt)
+expiryCutoffMinuteIST = input.int(30, "Expiry Cutoff Minute IST", minval=0, maxval=59, group=groupOpt)
+strikeStep = input.int(50, "ATM Strike Step", minval=1, group=groupOpt)
+oiPressureOffsetPoints = input.int(200, "OI Pressure Offset Points", minval=0, step=50, group=groupOpt)
+
+//=========================================================
+// DASHBOARD ROW VISIBILITY
+//=========================================================
+groupRowVis = "Dashboard Row Visibility"
+showRowGrade = input.bool(true, "Entry Grade", group=groupRowVis)
+showRowForce = input.bool(true, "Market Force Score", group=groupRowVis)
+showRowTrend = input.bool(true, "Trend Strength", group=groupRowVis)
+showRowStructRow = input.bool(true, "Structure (BOS/CHoCH)", group=groupRowVis)
+showRowTrapRow = input.bool(true, "Trap Detection", group=groupRowVis)
+showRowSweepRow = input.bool(true, "Liquidity Sweep", group=groupRowVis)
+showRowAdvanceRow = input.bool(true, "Advance Entry", group=groupRowVis)
+showRowMtfRow = input.bool(true, "MTF Alignment", group=groupRowVis)
+showRowTriggerRow = input.bool(true, "B Trigger / S Trigger", group=groupRowVis, tooltip="Shows both the Buy trigger and Sell trigger rows on the Dashboard (and their explanations on the Signal Read table).")
+showRowAvoidChaseRow = input.bool(true, "Avoid-Chase", group=groupRowVis)
+showRowSession = input.bool(true, "Session", group=groupRowVis)
+showRowZone = input.bool(true, "Nearest Zone", group=groupRowVis)
+showRowTargets = input.bool(true, "TP1 / TP2 / SL", group=groupRowVis)
+
+//=========================================================
+// PRICE / EMA HIGH-LOW / VWAP / ATR / VOLUME / RSI
+//=========================================================
+ema9h = ta.ema(high, ema1Len)
+ema9l = ta.ema(low, ema1Len)
+ema20h = ta.ema(high, ema2Len)
+ema20l = ta.ema(low, ema2Len)
+ema50h = ta.ema(high, ema3Len)
+ema50l = ta.ema(low, ema3Len)
+ema200h = ta.ema(high, ema4Len)
+ema200l = ta.ema(low, ema4Len)
+
+ema9Mid = (ema9h + ema9l) / 2.0
+ema20Mid = (ema20h + ema20l) / 2.0
+ema50Mid = (ema50h + ema50l) / 2.0
+ema200Mid = (ema200h + ema200l) / 2.0
+
+atrVal = ta.atr(atrLen)
+volSma = ta.sma(volume, 20)
+vwapVal = ta.vwap(hlc3)
+rsiVal = ta.rsi(close, rsiLen)
+
+f_format_vol(_v) =>
+    na(_v) ? "0" : _v >= 1000 ? str.tostring(_v, format.volume) : str.tostring(_v, "#.####")
+
+//=========================================================
+// ADX / DMI - Trend Strength Filter
+//=========================================================
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxSmoothLen)
+adxRising = adxVal > adxVal[1]
+trendBull = adxVal >= adxTrendLevel and diPlus > diMinus
+trendBear = adxVal >= adxTrendLevel and diMinus > diPlus
+
+//=========================================================
+// MACD (current chart, used by Market Force Score)
+//=========================================================
+macdFastEma = ta.ema(close, 12)
+macdSlowEma = ta.ema(close, 26)
+macdLine = macdFastEma - macdSlowEma
+macdSignal = ta.ema(macdLine, 9)
+macdHist = macdLine - macdSignal
+macdBull = macdLine > macdSignal and macdHist > macdHist[1]
+macdBear = macdLine < macdSignal and macdHist < macdHist[1]
+
+//=========================================================
+// MARKET STRUCTURE - HH/HL/LH/LL, BOS, CHoCH
+//=========================================================
+structPivotHigh = ta.pivothigh(high, structLeftBars, structRightBars)
+structPivotLow = ta.pivotlow(low, structLeftBars, structRightBars)
+var float lastSwingHigh = na
+var float prevSwingHigh = na
+var float lastSwingLow = na
+var float prevSwingLow = na
+var string lastHighLabel = na
+var string lastLowLabel = na
+var string structureBias = "NEUTRAL"
+
+if not na(structPivotHigh)
+    prevSwingHigh := lastSwingHigh
+    lastSwingHigh := structPivotHigh
+    lastHighLabel := na(prevSwingHigh) ? "H" : structPivotHigh > prevSwingHigh ? "HH" : "LH"
+    if lastHighLabel == "HH"
+        structureBias := "BULLISH"
+    if lastHighLabel == "LH"
+        structureBias := "BEARISH"
+    if showSwingLabels and not cleanChartMode
+        label.new(bar_index - structRightBars, structPivotHigh, lastHighLabel, style=label.style_label_down, color=lastHighLabel == "HH" ? color.new(color.teal, 0) : color.new(color.maroon, 0), textcolor=color.white, size=size.tiny)
+
+if not na(structPivotLow)
+    prevSwingLow := lastSwingLow
+    lastSwingLow := structPivotLow
+    lastLowLabel := na(prevSwingLow) ? "L" : structPivotLow < prevSwingLow ? "LL" : "HL"
+    if lastLowLabel == "HL"
+        structureBias := "BULLISH"
+    if lastLowLabel == "LL"
+        structureBias := "BEARISH"
+    if showSwingLabels and not cleanChartMode
+        label.new(bar_index - structRightBars, structPivotLow, lastLowLabel, style=label.style_label_up, color=lastLowLabel == "LL" ? color.new(color.maroon, 0) : color.new(color.teal, 0), textcolor=color.white, size=size.tiny)
+
+// BOS = a break that continues the prevailing structure bias.
+// CHoCH = a break that goes AGAINST the prevailing bias - the first sign of a
+// reversal - and it is what flips structureBias to the new side.
+structBosUpRaw = not na(lastSwingHigh) and ta.crossover(close, lastSwingHigh)
+structBosDownRaw = not na(lastSwingLow) and ta.crossunder(close, lastSwingLow)
+chochBull = structBosUpRaw and structureBias == "BEARISH"
+chochBear = structBosDownRaw and structureBias == "BULLISH"
+bosBull = structBosUpRaw and structureBias != "BEARISH"
+bosBear = structBosDownRaw and structureBias != "BULLISH"
+if chochBull
+    structureBias := "BULLISH"
+if chochBear
+    structureBias := "BEARISH"
+
+structureText = chochBull ? "CHoCH ▲" : chochBear ? "CHoCH ▼" : bosBull ? "BOS ▲" : bosBear ? "BOS ▼" : structureBias == "BULLISH" ? "BULLISH →" : structureBias == "BEARISH" ? "BEARISH →" : "NEUTRAL →"
+structureColor = chochBull or bosBull ? color.lime : chochBear or bosBear ? color.red : structureBias == "BULLISH" ? color.lime : structureBias == "BEARISH" ? color.red : color.white
+
+//=========================================================
+// ORDER BLOCKS / DEMAND-SUPPLY ZONES (with STR/Volume/OI/Volatility)
+//=========================================================
+f_safe_zone_score(_vol, _volSma, _body, _atr) =>
+    // Each half capped at 50 before summing, so the result always stays in
+    // [0, 100] - proven fix from the JungleeFrogs Order Block indicator.
+    safeVol = not na(_vol) and _vol > 0 ? _vol : na
+    safeVolSma = not na(_volSma) and _volSma > 0 ? _volSma : safeVol
+    safeVolRatio = not na(safeVol) and not na(safeVolSma) ? safeVol / math.max(safeVolSma, 1.0) : 1.0
+    safeBody = not na(_body) and _body > 0 ? _body : syminfo.mintick
+    safeAtr = not na(_atr) and _atr > 0 ? _atr : syminfo.mintick
+    volComponent = math.min(safeVolRatio * 50.0, 50.0)
+    bodyComponent = math.min((safeBody / math.max(safeAtr, syminfo.mintick)) * 50.0, 50.0)
+    scoreRaw = volComponent + bodyComponent
+    na(scoreRaw) ? 50.0 : scoreRaw
+
+pHi = ta.pivothigh(high, 3, 3)
+pLo = ta.pivotlow(low, 3, 3)
+var float lastSwingHighZone = na
+var float lastSwingLowZone = na
+if not na(pHi)
+    lastSwingHighZone := pHi
+if not na(pLo)
+    lastSwingLowZone := pLo
+bullBOS = not na(lastSwingHighZone) and close > lastSwingHighZone and close[1] <= lastSwingHighZone
+bearBOS = not na(lastSwingLowZone) and close < lastSwingLowZone and close[1] >= lastSwingLowZone
+
+var float demandHigh = na
+var float demandLow = na
+var int demandBorn = na
+var float demandScoreStored = na
+var float demandVolumeStored = na
+var float supplyHigh = na
+var float supplyLow = na
+var int supplyBorn = na
+var float supplyScoreStored = na
+var float supplyVolumeStored = na
+
+var bool demandZoneTested = false
+var bool supplyZoneTested = false
+var int demandUnrealizedCount = 0
+var int supplyUnrealizedCount = 0
+if not demandZoneTested and not na(demandHigh) and not na(demandLow) and low <= demandHigh and high >= demandLow
+    demandZoneTested := true
+if not supplyZoneTested and not na(supplyHigh) and not na(supplyLow) and low <= supplyHigh and high >= supplyLow
+    supplyZoneTested := true
+
+if bullBOS
+    float bestBody = 0.0
+    float bestHigh = na
+    float bestLow = na
+    float bestScore = na
+    float bestVol = na
+    int bestOffset = na
+    for i = 1 to obLookback
+        if close[i] < open[i]
+            body = math.abs(open[i] - close[i])
+            score = f_safe_zone_score(volume[i], volSma[i], body, atrVal[i])
+            if body > bestBody
+                bestBody := body
+                bestHigh := high[i]
+                bestLow := low[i]
+                bestScore := score
+                bestVol := volume[i]
+                bestOffset := i
+    if not na(bestOffset)
+        if not na(demandHigh) and not demandZoneTested
+            demandUnrealizedCount += 1
+        demandHigh := bestHigh
+        demandLow := bestLow
+        demandBorn := bar_index - bestOffset
+        demandScoreStored := bestScore
+        demandVolumeStored := bestVol
+        demandZoneTested := false
+
+if bearBOS
+    float bestBody2 = 0.0
+    float bestHigh2 = na
+    float bestLow2 = na
+    float bestScore2 = na
+    float bestVol2 = na
+    int bestOffset2 = na
+    for i = 1 to obLookback
+        if close[i] > open[i]
+            body2 = math.abs(open[i] - close[i])
+            score2 = f_safe_zone_score(volume[i], volSma[i], body2, atrVal[i])
+            if body2 > bestBody2
+                bestBody2 := body2
+                bestHigh2 := high[i]
+                bestLow2 := low[i]
+                bestScore2 := score2
+                bestVol2 := volume[i]
+                bestOffset2 := i
+    if not na(bestOffset2)
+        if not na(supplyHigh) and not supplyZoneTested
+            supplyUnrealizedCount += 1
+        supplyHigh := bestHigh2
+        supplyLow := bestLow2
+        supplyBorn := bar_index - bestOffset2
+        supplyScoreStored := bestScore2
+        supplyVolumeStored := bestVol2
+        supplyZoneTested := false
+
+demandTooFar = obMaxDistanceATR > 0 and not na(demandHigh) and atrVal > 0 and math.abs(close - demandHigh) > atrVal * obMaxDistanceATR
+supplyTooFar = obMaxDistanceATR > 0 and not na(supplyLow) and atrVal > 0 and math.abs(close - supplyLow) > atrVal * obMaxDistanceATR
+demandActive = not na(demandBorn) and (bar_index - demandBorn <= obLifeBars) and not demandTooFar
+supplyActive = not na(supplyBorn) and (bar_index - supplyBorn <= obLifeBars) and not supplyTooFar
+
+// A stale zone is a leftover marker from an earlier swing, not a live
+// boundary - if it now sits on the wrong side of the currently ACTIVE
+// opposite zone (e.g. a stale Demand/floor above the active Supply/
+// ceiling), showing it would draw a structurally contradictory picture,
+// so it's suppressed in favor of the active zone.
+demandConflictsWithActiveSupply = not demandActive and supplyActive and not na(supplyLow) and not na(demandHigh) and demandHigh >= supplyLow
+supplyConflictsWithActiveDemand = not supplyActive and demandActive and not na(demandHigh) and not na(supplyLow) and supplyLow <= demandHigh
+
+nearDemand = demandActive and not na(demandHigh) and math.abs(close - demandHigh) <= atrVal * zoneNearATR
+nearSupply = supplyActive and not na(supplyLow) and math.abs(close - supplyLow) <= atrVal * zoneNearATR
+
+breakoutBull = supplyActive and close > supplyHigh
+breakoutBear = demandActive and close < demandLow
+
+var float lastBrokenSupply = na
+var int lastBrokenSupplyBar = na
+var float lastBrokenDemand = na
+var int lastBrokenDemandBar = na
+if breakoutBull
+    lastBrokenSupply := supplyHigh
+    lastBrokenSupplyBar := bar_index
+if breakoutBear
+    lastBrokenDemand := demandLow
+    lastBrokenDemandBar := bar_index
+retestBull = not na(lastBrokenSupply) and bar_index - lastBrokenSupplyBar <= retestWindowBars and low <= lastBrokenSupply and close > lastBrokenSupply
+retestBear = not na(lastBrokenDemand) and bar_index - lastBrokenDemandBar <= retestWindowBars and high >= lastBrokenDemand and close < lastBrokenDemand
+
+sweepBull = demandActive and low < demandLow and close > demandLow
+sweepBear = supplyActive and high > supplyHigh and close < supplyHigh
+
+zoneGapRaw = demandActive and supplyActive ? supplyLow - demandHigh : na
+zoneGap = na(zoneGapRaw) ? na : math.max(zoneGapRaw, 0.0)
+priceBetweenZones = demandActive and supplyActive and close >= demandLow and close <= supplyHigh
+zoneCompression = demandActive and supplyActive and not na(zoneGap) and zoneGap <= atrVal * compressionATR and priceBetweenZones
+
+// Volatility of a zone: its own height relative to current ATR, e.g. "2.1x
+// ATR" - a wide order-block candle relative to today's typical range.
+demandVolatilityRatio = not na(demandHigh) and not na(demandLow) and atrVal > 0 ? (demandHigh - demandLow) / atrVal : na
+supplyVolatilityRatio = not na(supplyHigh) and not na(supplyLow) and atrVal > 0 ? (supplyHigh - supplyLow) / atrVal : na
+
+//=========================================================
+// ATM OPTION PREMIUM / OI (auto; N/A with no option chain on this symbol)
+//=========================================================
+f_auto_option_root() =>
+    _ticker = syminfo.ticker
+    str.contains(_ticker, "BANKNIFTY") ? "BANKNIFTY" : str.contains(_ticker, "FINNIFTY") ? "FINNIFTY" : str.contains(_ticker, "MIDCPNIFTY") ? "MIDCPNIFTY" : str.contains(_ticker, "NIFTY") ? "NIFTY" : _ticker
+
+optionRootToUse = optionRootAutoMode and (str.length(optionRoot) == 0 or optionRoot == "AUTO") ? f_auto_option_root() : optionRoot
+atmStrike = math.round(close / strikeStep) * strikeStep
+
+f_pad2(_n) =>
+    _n < 10 ? "0" + str.tostring(_n) : str.tostring(_n)
+f_targetDow(_d) =>
+    _d == 1 ? dayofweek.monday : _d == 2 ? dayofweek.tuesday : _d == 3 ? dayofweek.wednesday : _d == 4 ? dayofweek.thursday : dayofweek.friday
+
+indiaTz = "Asia/Kolkata"
+currentDow = dayofweek(timenow, indiaTz)
+targetDow = f_targetDow(immediateExpiryDayNo)
+daysUntilExpiryRaw = targetDow >= currentDow ? targetDow - currentDow : targetDow - currentDow + 7
+currentHourIST = hour(timenow, indiaTz)
+currentMinuteIST = minute(timenow, indiaTz)
+afterExpiryCutoff = currentHourIST > expiryCutoffHourIST or (currentHourIST == expiryCutoffHourIST and currentMinuteIST >= expiryCutoffMinuteIST)
+daysUntilExpiry = daysUntilExpiryRaw == 0 and afterExpiryCutoff ? 7 : daysUntilExpiryRaw
+expiryTs = timestamp(indiaTz, year(timenow, indiaTz), month(timenow, indiaTz), dayofmonth(timenow, indiaTz) + daysUntilExpiry, 0, 0, 0)
+autoImmediateExpiryYYMMDD = f_pad2(year(expiryTs, indiaTz) % 100) + f_pad2(month(expiryTs, indiaTz)) + f_pad2(dayofmonth(expiryTs, indiaTz))
+expiryYYMMDDToUse = useImmediateExpiry ? autoImmediateExpiryYYMMDD : optionExpiryYYMMDD
+
+autoOptReady = autoBuildAtmSymbols and str.length(optionExchange) > 0 and str.length(optionRootToUse) > 0 and str.length(expiryYYMMDDToUse) == 6
+autoCallOiPressureStrike = math.max(atmStrike - oiPressureOffsetPoints, strikeStep)
+autoPutOiPressureStrike = atmStrike + oiPressureOffsetPoints
+autoCallOiPressureOptionSymbol = optionExchange + ":" + optionRootToUse + expiryYYMMDDToUse + "C" + str.tostring(int(autoCallOiPressureStrike))
+autoPutOiPressureOptionSymbol = optionExchange + ":" + optionRootToUse + expiryYYMMDDToUse + "P" + str.tostring(int(autoPutOiPressureStrike))
+
+autoLockBar = barstate.islastconfirmedhistory or (barstate.islast and not barstate.isrealtime)
+var string lockedCallOiSymbol = ""
+var string lockedPutOiSymbol = ""
+if autoLockBar
+    lockedCallOiSymbol := autoOptReady ? autoCallOiPressureOptionSymbol : lockedCallOiSymbol
+    lockedPutOiSymbol := autoOptReady ? autoPutOiPressureOptionSymbol : lockedPutOiSymbol
+
+float ceOi = na
+float peOi = na
+ceOiRequestReady = str.length(lockedCallOiSymbol) > 0 and (autoLockBar or barstate.isrealtime)
+peOiRequestReady = str.length(lockedPutOiSymbol) > 0 and (autoLockBar or barstate.isrealtime)
+if ceOiRequestReady
+    ceOi := request.security(lockedCallOiSymbol + "_OI", timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+if peOiRequestReady
+    peOi := request.security(lockedPutOiSymbol + "_OI", timeframe.period, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+
+demandOiText = na(peOi) ? "" : " | PUT OI " + f_format_vol(peOi)
+supplyOiText = na(ceOi) ? "" : " | CALL OI " + f_format_vol(ceOi)
+
+//=========================================================
+// TRAP / FAKE-BREAKOUT DETECTION + AVOID-CHASE
+//=========================================================
+buyIntoSupplyTrap = nearSupply and not nearDemand and trendBull
+sellIntoDemandTrap = nearDemand and not nearSupply and trendBear
+fakeBuyBreakout = supplyActive and high > supplyHigh and close < supplyHigh
+fakeSellBreakdown = demandActive and low < demandLow and close > demandLow
+trapHigh = useTrapDetection and (zoneCompression or buyIntoSupplyTrap or sellIntoDemandTrap or fakeBuyBreakout or fakeSellBreakdown)
+trapReasonText = fakeBuyBreakout ? "FAKE BUY BREAKOUT" : fakeSellBreakdown ? "FAKE SELL BREAKDOWN" : buyIntoSupplyTrap ? "BUY INTO SUPPLY" : sellIntoDemandTrap ? "SELL INTO DEMAND" : zoneCompression ? "ZONE SQUEEZE" : "OK"
+trapDirectionWord = fakeBuyBreakout or buyIntoSupplyTrap ? "BUY" : fakeSellBreakdown or sellIntoDemandTrap ? "SELL" : "BOTH"
+
+// Avoid-chase: price has already run far from the last EMA9 mid / zone
+// without a pullback - entering here means buying/selling the extreme
+// rather than a level, which is exactly what SMC entries try to avoid.
+avoidChaseLong = useAvoidChase and atrVal > 0 and (close - ema9Mid) > atrVal * chaseDistanceATR
+avoidChaseShort = useAvoidChase and atrVal > 0 and (ema9Mid - close) > atrVal * chaseDistanceATR
+avoidChaseText = avoidChaseLong ? "DON'T CHASE BUY" : avoidChaseShort ? "DON'T CHASE SELL" : "OK"
+
+//=========================================================
+// MTF ALIGNMENT
+//=========================================================
+f_mtf_bias() =>
+    _e50 = ta.ema(close, 50)
+    _e200 = ta.ema(close, 200)
+    _bias = close > _e50 and _e50 > _e200 ? 1 : close < _e50 and _e50 < _e200 ? -1 : 0
+    _bias[1]
+
+mtfBias1 = mtfEnable ? request.security(syminfo.tickerid, mtfTf1, f_mtf_bias(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off) : 0
+mtfBias2 = mtfEnable ? request.security(syminfo.tickerid, mtfTf2, f_mtf_bias(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off) : 0
+chartBiasNum = close > ema50Mid and ema50Mid > ema200Mid ? 1 : close < ema50Mid and ema50Mid < ema200Mid ? -1 : 0
+mtfAlignedBull = useMtfAlignment and chartBiasNum > 0 and mtfBias1 > 0 and mtfBias2 > 0
+mtfAlignedBear = useMtfAlignment and chartBiasNum < 0 and mtfBias1 < 0 and mtfBias2 < 0
+mtfText = mtfAlignedBull ? "ALIGNED ▲" : mtfAlignedBear ? "ALIGNED ▼" : "MIXED →"
+
+//=========================================================
+// ADVANCE ENTRY (early ADV WATCH, before full confirmation)
+//=========================================================
+advanceBuy = useAdvanceEntry and nearDemand and (diPlus >= diMinus or macdBull)
+advanceSell = useAdvanceEntry and nearSupply and (diMinus >= diPlus or macdBear)
+advanceText = advanceBuy ? "ADV BUY WATCH ▲" : advanceSell ? "ADV SELL WATCH ▼" : "WAIT →"
+
+//=========================================================
+// MARKET FORCE SCORE (0-100) + ENTRY GRADE
+//=========================================================
+emaBull = close > ema9Mid and ema9Mid > ema20Mid and ema20Mid > ema50Mid and ema50Mid > ema200Mid
+emaBear = close < ema9Mid and ema9Mid < ema20Mid and ema20Mid < ema50Mid and ema50Mid < ema200Mid
+vwapBull = close > vwapVal
+vwapBear = close < vwapVal
+volBull = volume > volSma and close > open
+volBear = volume > volSma and close < open
+
+forceScoreBull = (trendBull ? 20.0 : 0.0) + (macdBull ? 15.0 : 0.0) + (emaBull ? 15.0 : 0.0) + (vwapBull ? 10.0 : 0.0) + (volBull ? 10.0 : 0.0) + (structureBias == "BULLISH" ? 10.0 : 0.0) + (bosBull or chochBull ? 10.0 : 0.0) + (mtfAlignedBull ? 10.0 : 0.0)
+forceScoreBear = (trendBear ? 20.0 : 0.0) + (macdBear ? 15.0 : 0.0) + (emaBear ? 15.0 : 0.0) + (vwapBear ? 10.0 : 0.0) + (volBear ? 10.0 : 0.0) + (structureBias == "BEARISH" ? 10.0 : 0.0) + (bosBear or chochBear ? 10.0 : 0.0) + (mtfAlignedBear ? 10.0 : 0.0)
+forceScoreBull := math.min(forceScoreBull, 100.0)
+forceScoreBear := math.min(forceScoreBear, 100.0)
+forceDominantBull = forceScoreBull > forceScoreBear
+
+entryGradeSide = trapHigh ? "AVOID" : forceDominantBull and forceScoreBull >= gradeBMin ? "BUY" : not forceDominantBull and forceScoreBear >= gradeBMin ? "SELL" : "AVOID"
+entryGradeScore = entryGradeSide == "BUY" ? forceScoreBull : entryGradeSide == "SELL" ? forceScoreBear : math.max(forceScoreBull, forceScoreBear)
+entryGradeText = trapHigh ? "AVOID" : entryGradeSide == "AVOID" ? "AVOID" : entryGradeScore >= gradeAPlusMin ? "A+" : entryGradeScore >= gradeAMin ? "A" : entryGradeScore >= gradeBMin ? "B" : "AVOID"
+entryGradeColor = entryGradeText == "AVOID" ? color.red : entryGradeText == "A+" ? color.lime : entryGradeText == "A" ? color.new(color.lime, 30) : color.yellow
+
+f_grade_rank(_g) =>
+    _g == "A+" ? 3 : _g == "A" ? 2 : _g == "B" ? 1 : 0
+minGradeRank = minGradeToTradeInput == "Any (ignore grade)" ? 0 : f_grade_rank(minGradeToTradeInput)
+gradeMeetsMin = f_grade_rank(entryGradeText) >= minGradeRank
+
+//=========================================================
+// SESSION FILTER
+//=========================================================
+sessMinutesNow = hour(timenow, sessionTimezone) * 60 + minute(timenow, sessionTimezone)
+sessStartMinutes = sessionStartHour * 60 + sessionStartMinute
+sessEndMinutes = sessionEndHour * 60 + sessionEndMinute
+inSession = sessMinutesNow >= sessStartMinutes and sessMinutesNow <= sessEndMinutes
+isOpening = inSession and (sessMinutesNow - sessStartMinutes) <= openingWindowMin
+isClosing = inSession and (sessEndMinutes - sessMinutesNow) <= closingWindowMin
+sessionText = not inSession ? "CLOSED" : isOpening ? "OPENING" : isClosing ? "CLOSING" : "MID-DAY"
+sessionColor = not inSession ? color.gray : isOpening ? color.yellow : isClosing ? color.orange : color.white
+
+//=========================================================
+// TAKE-PROFIT / STOP-LOSS / INVALIDATION LEVELS
+//=========================================================
+longSL = demandActive ? demandLow - atrVal * invalidBufferATR : close - atrVal * slAtrMult
+longTP1 = close + atrVal * tp1AtrMult
+longTP2 = close + atrVal * tp2AtrMult
+shortSL = supplyActive ? supplyHigh + atrVal * invalidBufferATR : close + atrVal * slAtrMult
+shortTP1 = close - atrVal * tp1AtrMult
+shortTP2 = close - atrVal * tp2AtrMult
+triggerBuyText = "BUY IF PRICE > " + str.tostring(high, format.mintick)
+triggerSellText = "SELL IF PRICE < " + str.tostring(low, format.mintick)
+
+//=========================================================
+// BUY / SELL SIGNAL (EMA9 High/Low slope reversal - confluence + multi-bar
+// confirmation, the same tuned logic proven in the EMA High/Low Pressure
+// Matrix indicator, now gated by Entry Grade and Trap Risk as well)
+//=========================================================
+ema9lRising = ema9l > ema9l[1]
+ema9hFalling = ema9h < ema9h[1]
+ema9lRisingStreak = ta.rising(ema9l, safeConfirmBars)
+ema9hFallingStreak = ta.falling(ema9h, safeConfirmBars)
+ema9lTurnedUp = ema9lRisingStreak and not ema9lRisingStreak[1]
+ema9hTurnedDown = ema9hFallingStreak and not ema9hFallingStreak[1]
+ema9lSlopeMag = math.abs(ema9l - ema9l[safeConfirmBars])
+ema9hSlopeMag = math.abs(ema9h - ema9h[safeConfirmBars])
+entrySlopeOk = ema9lSlopeMag >= atrVal * safeMinSlopeATR
+exitSlopeOk = ema9hSlopeMag >= atrVal * safeMinSlopeATR
+entryConfluenceOk = not safeRequireConfluence or not ema9hFalling
+exitConfluenceOk = not safeRequireConfluence or not ema9lRising
+
+var int lastBuyBar = na
+var int lastSellBar = na
+buyReady = na(lastBuyBar) or bar_index - lastBuyBar >= safeCooldownBars
+sellReady = na(lastSellBar) or bar_index - lastSellBar >= safeCooldownBars
+
+buySignalRaw = barstate.isconfirmed and ema9lTurnedUp and entrySlopeOk and entryConfluenceOk and buyReady and not trapHigh and not avoidChaseLong
+sellSignalRaw = barstate.isconfirmed and ema9hTurnedDown and exitSlopeOk and exitConfluenceOk and sellReady and not trapHigh and not avoidChaseShort
+buySignal = buySignalRaw and (entryGradeSide == "BUY" and gradeMeetsMin)
+sellSignal = sellSignalRaw and (entryGradeSide == "SELL" and gradeMeetsMin)
+
+if buySignal
+    lastBuyBar := bar_index
+if sellSignal
+    lastSellBar := bar_index
+
+//=========================================================
+// JSON WEBHOOK PAYLOAD
+//=========================================================
+f_json(_action) =>
+    "{\"indicator\":\"JungleeFrogs SMC Edge System\",\"ticker\":\"" + syminfo.ticker + "\",\"interval\":\"" + timeframe.period + "\",\"action\":\"" + _action + "\",\"grade\":\"" + entryGradeText + "\",\"price\":" + str.tostring(close) + ",\"stop_loss\":" + str.tostring(_action == "SELL" ? shortSL : longSL) + ",\"take_profit_1\":" + str.tostring(_action == "SELL" ? shortTP1 : longTP1) + ",\"take_profit_2\":" + str.tostring(_action == "SELL" ? shortTP2 : longTP2) + "}"
+
+//=========================================================
+// STRATEGY EXECUTION (native backtesting via Strategy Tester)
+//=========================================================
+if enableBacktestOrders and buySignal
+    strategy.entry("Long", strategy.long, alert_message=f_json("BUY"))
+if enableBacktestOrders and sellSignal
+    strategy.entry("Short", strategy.short, alert_message=f_json("SELL"))
+if enableBacktestOrders
+    strategy.exit("Long Exit", from_entry="Long", stop=longSL, limit=longTP2, alert_message=f_json("EXIT_LONG"))
+    strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP2, alert_message=f_json("EXIT_SHORT"))
+
+//=========================================================
+// MULTI-SYMBOL SCREENER (10 fixed slots)
+//=========================================================
+f_scan() =>
+    _e50 = ta.ema(close, 50)
+    _e200 = ta.ema(close, 200)
+    _rsi = ta.rsi(close, 14)
+    [_diP, _diM, _adx] = ta.dmi(14, 14)
+    _biasNum = close > _e50 and _e50 > _e200 ? 1 : close < _e50 and _e50 < _e200 ? -1 : 0
+    [_biasNum, _rsi, _adx, _diP, _diM, close]
+
+scan1Ready = str.length(scanSym1) > 0
+scan2Ready = str.length(scanSym2) > 0
+scan3Ready = str.length(scanSym3) > 0
+scan4Ready = str.length(scanSym4) > 0
+scan5Ready = str.length(scanSym5) > 0
+scan6Ready = str.length(scanSym6) > 0
+scan7Ready = str.length(scanSym7) > 0
+scan8Ready = str.length(scanSym8) > 0
+scan9Ready = str.length(scanSym9) > 0
+scan10Ready = str.length(scanSym10) > 0
+
+[scan1Bias, scan1Rsi, scan1Adx, scan1DiP, scan1DiM, scan1Px] = request.security(scan1Ready ? scanSym1 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan2Bias, scan2Rsi, scan2Adx, scan2DiP, scan2DiM, scan2Px] = request.security(scan2Ready ? scanSym2 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan3Bias, scan3Rsi, scan3Adx, scan3DiP, scan3DiM, scan3Px] = request.security(scan3Ready ? scanSym3 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan4Bias, scan4Rsi, scan4Adx, scan4DiP, scan4DiM, scan4Px] = request.security(scan4Ready ? scanSym4 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan5Bias, scan5Rsi, scan5Adx, scan5DiP, scan5DiM, scan5Px] = request.security(scan5Ready ? scanSym5 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan6Bias, scan6Rsi, scan6Adx, scan6DiP, scan6DiM, scan6Px] = request.security(scan6Ready ? scanSym6 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan7Bias, scan7Rsi, scan7Adx, scan7DiP, scan7DiM, scan7Px] = request.security(scan7Ready ? scanSym7 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan8Bias, scan8Rsi, scan8Adx, scan8DiP, scan8DiM, scan8Px] = request.security(scan8Ready ? scanSym8 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan9Bias, scan9Rsi, scan9Adx, scan9DiP, scan9DiM, scan9Px] = request.security(scan9Ready ? scanSym9 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+[scan10Bias, scan10Rsi, scan10Adx, scan10DiP, scan10DiM, scan10Px] = request.security(scan10Ready ? scanSym10 : syminfo.tickerid, timeframe.period, f_scan(), ignore_invalid_symbol=true)
+
+f_scan_bias_text(_b) =>
+    _b > 0 ? "BULL ▲" : _b < 0 ? "BEAR ▼" : "MIXED →"
+f_scan_bias_color(_b) =>
+    _b > 0 ? color.lime : _b < 0 ? color.red : color.white
+f_rsi_text(_rsi) =>
+    str.tostring(_rsi, "#.#") + (_rsi > 50 ? " ▲" : _rsi < 50 ? " ▼" : " →")
+f_rsi_color(_rsi) =>
+    _rsi > 50 ? color.lime : _rsi < 50 ? color.red : color.white
+f_adx_text(_adx, _diP, _diM) =>
+    str.tostring(_adx, "#.#") + (_adx >= adxTrendLevel and _diP > _diM ? " ▲" : _adx >= adxTrendLevel and _diM > _diP ? " ▼" : " →")
+f_adx_color(_adx, _diP, _diM) =>
+    _adx >= adxTrendLevel and _diP > _diM ? color.lime : _adx >= adxTrendLevel and _diM > _diP ? color.red : color.white
+f_di_text(_thisVal, _otherVal) =>
+    str.tostring(_thisVal, "#.#") + (_thisVal > _otherVal ? " ▲" : _thisVal < _otherVal ? " ▼" : " →")
+f_di_color(_thisVal, _otherVal) =>
+    _thisVal > _otherVal ? color.lime : _thisVal < _otherVal ? color.red : color.white
+
+//=========================================================
+// CANDLE BUY(Blue)/SELL(Yellow) PRESSURE FILL - proven pattern from the
+// EMA High/Low Pressure Matrix indicator, reused here
+//=========================================================
+candleBody = math.abs(close - open)
+candleFullRange = math.max(high - low, syminfo.mintick)
+candleBodyRatioVal = candleBody / candleFullRange
+candleClosePosVal = (close - low) / candleFullRange
+bodyBull = close > open and candleBodyRatioVal > 0.6 and candleClosePosVal > 0.7
+bodyBear = close < open and candleBodyRatioVal > 0.6 and candleClosePosVal < 0.3
+
+var line[] pressureLines = array.new_line()
+var line liveBuyLine = na
+var line liveSellLine = na
+
+f_storePressureLine(_ln) =>
+    array.push(pressureLines, _ln)
+    maxLines = candleHistory * 2
+    if array.size(pressureLines) > maxLines
+        oldLine = array.shift(pressureLines)
+        line.delete(oldLine)
+
+if barstate.islast
+    if not na(liveBuyLine)
+        line.delete(liveBuyLine)
+        liveBuyLine := na
+    if not na(liveSellLine)
+        line.delete(liveSellLine)
+        liveSellLine := na
+
+if showCandlePressure
+    pressureBuyVotes = (emaBull ? 1 : 0) + (vwapBull ? 1 : 0) + (macdBull ? 1 : 0) + (volBull ? 1 : 0) + (bodyBull ? 1 : 0) + (trendBull ? 1 : 0)
+    pressureBuyRatioRaw = pressureBuyVotes / 6.0
+    pressureBuyRatio = math.min(math.max(pressureBuyRatioRaw, 0.0), 1.0)
+    pressureSellRatio = 1.0 - pressureBuyRatio
+    pTop = high
+    pBottom = low
+    heightRaw = pTop - pBottom
+    pHeight = math.max(heightRaw, syminfo.mintick * 10)
+    pMid = (pTop + pBottom) / 2.0
+    dTop = heightRaw > syminfo.mintick * 2 ? pTop : pMid + pHeight / 2.0
+    dBottom = heightRaw > syminfo.mintick * 2 ? pBottom : pMid - pHeight / 2.0
+    dHeight = dTop - dBottom
+
+    float buyTop = na
+    float buyBottom = na
+    float sellTop = na
+    float sellBottom = na
+    if close >= open
+        buyTop := dTop
+        buyBottom := dTop - dHeight * pressureBuyRatio
+        sellTop := buyBottom
+        sellBottom := dBottom
+    else
+        sellTop := dTop
+        sellBottom := dTop - dHeight * pressureSellRatio
+        buyTop := sellBottom
+        buyBottom := dBottom
+
+    if barstate.isconfirmed
+        if pressureBuyRatio > 0
+            buyLine = line.new(bar_index, buyBottom, bar_index, buyTop, xloc=xloc.bar_index, extend=extend.none, color=colBuyPressure, width=candleSegWidth)
+            f_storePressureLine(buyLine)
+        if pressureSellRatio > 0
+            sellLine = line.new(bar_index, sellBottom, bar_index, sellTop, xloc=xloc.bar_index, extend=extend.none, color=colSellPressure, width=candleSegWidth)
+            f_storePressureLine(sellLine)
+    else if barstate.islast
+        if pressureBuyRatio > 0
+            liveBuyLine := line.new(bar_index, buyBottom, bar_index, buyTop, xloc=xloc.bar_index, extend=extend.none, color=colBuyPressure, width=candleSegWidth)
+        if pressureSellRatio > 0
+            liveSellLine := line.new(bar_index, sellBottom, bar_index, sellTop, xloc=xloc.bar_index, extend=extend.none, color=colSellPressure, width=candleSegWidth)
+
+//=========================================================
+// PLOTS - Pivot-free (this system uses zones, not pivots), EMA/VWAP, crosses
+//=========================================================
+plot(showEma9H ? ema9h : na, "EMA 9 High", color=colEma9H, linewidth=widEma9H, style=plotStyleSel)
+plot(showEma9L ? ema9l : na, "EMA 9 Low", color=colEma9L, linewidth=widEma9L, style=plotStyleSel)
+plot(showEma20H ? ema20h : na, "EMA 20 High", color=colEma20H, linewidth=widEma20H, style=plotStyleSel)
+plot(showEma20L ? ema20l : na, "EMA 20 Low", color=colEma20L, linewidth=widEma20L, style=plotStyleSel)
+plot(showEma50H ? ema50h : na, "EMA 50 High", color=colEma50H, linewidth=widEma50H, style=plotStyleSel)
+plot(showEma50L ? ema50l : na, "EMA 50 Low", color=colEma50L, linewidth=widEma50L, style=plotStyleSel)
+plot(showEma200H ? ema200h : na, "EMA 200 High", color=colEma200H, linewidth=widEma200H, style=plotStyleSel)
+plot(showEma200L ? ema200l : na, "EMA 200 Low", color=colEma200L, linewidth=widEma200L, style=plotStyleSel)
+plot(showVwapLine ? vwapVal : na, "VWAP", color=colVwap, linewidth=widVwap, style=plotStyleSel)
+
+goldenCross = ta.crossover(ema50h, ema200h)
+deathCross = ta.crossunder(ema50h, ema200h)
+plotshape(not cleanChartMode and goldenCross ? ema200h : na, title="Golden Cross", text="GOLDEN\nCROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
+plotshape(not cleanChartMode and deathCross ? ema200h : na, title="Death Cross", text="DEATH\nCROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
+
+//=========================================================
+// BUY/SELL LABELS
+//=========================================================
+// plotshape()'s text= must be a const string - it cannot be built from a
+// series value like entryGradeText, unlike label.new(). The grade is shown
+// per-signal via a separate label.new() call right below (dynamic text is
+// fine there), while this plotshape keeps the fixed "BUY"/"SELL" text and
+// persists automatically across all of history, matching the proven Safe
+// Entry/Exit pattern in the other two JungleeFrogs scripts.
+plotshape(showBuySellLabels and buySignal ? low : na, title="Buy Label", text="BUY", location=location.absolute, style=shape.labelup, size=size.normal, color=color.new(color.lime, 0), textcolor=color.black)
+plotshape(showBuySellLabels and sellSignal ? high : na, title="Sell Label", text="SELL", location=location.absolute, style=shape.labeldown, size=size.normal, color=color.new(color.red, 0), textcolor=color.white)
+
+// Grade shown on the current/latest signal only, via a dynamic-text label
+// (plotshape can't do this - see note above). Historical signals still show
+// their fixed BUY/SELL marker from the plotshape calls; only the newest
+// signal's exact grade gets this extra live label.
+var label lastSignalGradeLabel = na
+if barstate.islast
+    if not na(lastSignalGradeLabel)
+        label.delete(lastSignalGradeLabel)
+    if showBuySellLabels and buySignal
+        lastSignalGradeLabel := label.new(bar_index, low - atrVal * 0.8, entryGradeText, xloc=xloc.bar_index, style=label.style_label_up, color=color.new(color.lime, 0), textcolor=color.black, size=size.small)
+    if showBuySellLabels and sellSignal
+        lastSignalGradeLabel := label.new(bar_index, high + atrVal * 0.8, entryGradeText, xloc=xloc.bar_index, style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+
+//=========================================================
+// STRUCTURE (BOS/CHoCH) MARKERS
+//=========================================================
+// BOS is routine (continuation) and fires often - suppressed by Clean Chart
+// Mode. CHoCH is the rarer reversal signal, so it stays visible even in
+// Clean Mode; only its own showStructure toggle can turn it off.
+plotshape(showStructure and not cleanChartMode and bosBull ? low : na, title="BOS Up", text="BOS", location=location.belowbar, style=shape.triangleup, size=size.tiny, color=color.new(color.blue, 0))
+plotshape(showStructure and not cleanChartMode and bosBear ? high : na, title="BOS Down", text="BOS", location=location.abovebar, style=shape.triangledown, size=size.tiny, color=color.new(color.purple, 0))
+plotshape(showStructure and chochBull ? low : na, title="CHoCH Up", text="CHoCH", location=location.belowbar, style=shape.labelup, size=size.small, color=color.new(color.aqua, 0), textcolor=color.black)
+plotshape(showStructure and chochBear ? high : na, title="CHoCH Down", text="CHoCH", location=location.abovebar, style=shape.labeldown, size=size.small, color=color.new(color.fuchsia, 0), textcolor=color.white)
+
+//=========================================================
+// MAIN DASHBOARD - clean, simple action words
+//=========================================================
+f_row_bg(_col) =>
+    _col == color.red ? colRedTextCellBg : color.new(color.black, 0)
+
+actionText = trapHigh ? "AVOID" : buySignal ? "BUY NOW" : sellSignal ? "SELL NOW" : entryGradeSide == "BUY" ? "PREPARE BUY" : entryGradeSide == "SELL" ? "PREPARE SELL" : "WAIT"
+actionColor = trapHigh ? color.red : actionText == "BUY NOW" or actionText == "PREPARE BUY" ? color.lime : actionText == "SELL NOW" or actionText == "PREPARE SELL" ? color.red : color.white
+actionBg = trapHigh ? colRedTextCellBg : actionText == "BUY NOW" ? color.new(color.green, 0) : actionText == "SELL NOW" ? colRedTextCellBg : color.new(color.gray, 20)
+
+var table dashTable = table.new(dashboardPos, 2, 15, bgcolor=color.new(color.black, 20), border_width=1)
+
+if barstate.islast and showDashboard
+    table.clear(dashTable, 0, 0, 1, 14)
+    table.cell(dashTable, 0, 0, "ACTION", text_color=color.white, bgcolor=actionBg, text_size=tableLabelSize)
+    table.cell(dashTable, 1, 0, actionText, text_color=actionColor, bgcolor=actionBg, text_size=tableValueSize)
+
+    int row = 1
+    if showRowGrade
+        table.cell(dashTable, 0, row, compactLabels ? "Grade" : "Entry Grade", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, entryGradeText + " (" + entryGradeSide + ")", text_color=entryGradeColor, bgcolor=f_row_bg(entryGradeColor), text_size=tableValueSize)
+        row := row + 1
+    if showRowForce
+        table.cell(dashTable, 0, row, compactLabels ? "Force" : "Market Force Score", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, "B " + str.tostring(forceScoreBull, "#") + " / S " + str.tostring(forceScoreBear, "#"), text_color=forceDominantBull ? color.lime : color.red, bgcolor=forceDominantBull ? color.new(color.black, 0) : colRedTextCellBg, text_size=tableValueSize)
+        row := row + 1
+    if showRowTrend
+        table.cell(dashTable, 0, row, compactLabels ? "Trend" : "Trend Strength", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, "ADX " + str.tostring(adxVal, "#.#") + (trendBull ? " ▲" : trendBear ? " ▼" : " →"), text_color=trendBull ? color.lime : trendBear ? color.red : color.white, bgcolor=trendBear ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowStructRow
+        table.cell(dashTable, 0, row, compactLabels ? "Struct" : "Structure", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, structureText, text_color=structureColor, bgcolor=f_row_bg(structureColor), text_size=tableValueSize)
+        row := row + 1
+    if showRowTrapRow
+        table.cell(dashTable, 0, row, "Trap", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, trapHigh ? "TRAP: " + trapReasonText : "CLEAR", text_color=trapHigh ? color.red : color.white, bgcolor=trapHigh ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowSweepRow
+        table.cell(dashTable, 0, row, "Sweep", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, sweepBull ? "LOW SWEPT ▲" : sweepBear ? "HIGH SWEPT ▼" : "NONE →", text_color=sweepBull ? color.lime : sweepBear ? color.red : color.white, bgcolor=sweepBear ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowAdvanceRow
+        table.cell(dashTable, 0, row, compactLabels ? "Advance" : "Advance Entry", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, advanceText, text_color=advanceBuy ? color.lime : advanceSell ? color.red : color.white, bgcolor=advanceSell ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowMtfRow
+        table.cell(dashTable, 0, row, "MTF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, mtfText, text_color=mtfAlignedBull ? color.lime : mtfAlignedBear ? color.red : color.white, bgcolor=mtfAlignedBear ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowTriggerRow
+        table.cell(dashTable, 0, row, "B Trigger", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, triggerBuyText, text_color=color.lime, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowTriggerRow
+        table.cell(dashTable, 0, row, "S Trigger", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, triggerSellText, text_color=color.red, bgcolor=colRedTextCellBg, text_size=tableValueSize)
+        row := row + 1
+    if showRowAvoidChaseRow
+        table.cell(dashTable, 0, row, compactLabels ? "Chase" : "Avoid-Chase", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, avoidChaseText, text_color=avoidChaseText == "OK" ? color.white : color.red, bgcolor=avoidChaseText == "OK" ? color.new(color.black, 0) : colRedTextCellBg, text_size=tableValueSize)
+        row := row + 1
+    if showRowSession
+        table.cell(dashTable, 0, row, "Session", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, sessionText, text_color=sessionColor, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowZone
+        table.cell(dashTable, 0, row, compactLabels ? "Zone" : "Nearest Zone", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, nearDemand ? "NEAR DEMAND" : nearSupply ? "NEAR SUPPLY" : "MID-RANGE", text_color=nearDemand ? color.lime : nearSupply ? color.red : color.white, bgcolor=nearSupply ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+    if showRowTargets
+        table.cell(dashTable, 0, row, compactLabels ? "TP/SL" : "TP1 / TP2 / SL", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        targetsText = entryGradeSide == "SELL" ? "TP " + str.tostring(shortTP1, format.mintick) + "/" + str.tostring(shortTP2, format.mintick) + " SL " + str.tostring(shortSL, format.mintick) : "TP " + str.tostring(longTP1, format.mintick) + "/" + str.tostring(longTP2, format.mintick) + " SL " + str.tostring(longSL, format.mintick)
+        table.cell(dashTable, 1, row, targetsText, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
+
+if barstate.islast and not showDashboard
+    table.clear(dashTable, 0, 0, 1, 14)
+
+//=========================================================
+// MULTI-SYMBOL SCREENER TABLE
+//=========================================================
+var table screenerTable = table.new(screenerPos, 7, 11, bgcolor=color.new(color.black, 20), border_width=1)
+
+if barstate.islast and showScreener
+    table.clear(screenerTable, 0, 0, 6, 10)
+    table.cell(screenerTable, 0, 0, "SYMBOL", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+    table.cell(screenerTable, 1, 0, "BIAS", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+    table.cell(screenerTable, 2, 0, "RSI", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+    table.cell(screenerTable, 3, 0, "ADX", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+    table.cell(screenerTable, 4, 0, "DI+", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+    table.cell(screenerTable, 5, 0, "DI-", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+    table.cell(screenerTable, 6, 0, "PRICE", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+
+    int srow = 1
+    if scan1Ready
+        table.cell(screenerTable, 0, srow, str.upper(syminfo.ticker != scanSym1 ? scanSym1 : scanSym1), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan1Bias), text_color=f_scan_bias_color(scan1Bias), bgcolor=f_row_bg(f_scan_bias_color(scan1Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan1Rsi), text_color=f_rsi_color(scan1Rsi), bgcolor=f_row_bg(f_rsi_color(scan1Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan1Adx, scan1DiP, scan1DiM), text_color=f_adx_color(scan1Adx, scan1DiP, scan1DiM), bgcolor=f_row_bg(f_adx_color(scan1Adx, scan1DiP, scan1DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan1DiP, scan1DiM), text_color=f_di_color(scan1DiP, scan1DiM), bgcolor=f_row_bg(f_di_color(scan1DiP, scan1DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan1DiM, scan1DiP), text_color=f_di_color(scan1DiM, scan1DiP), bgcolor=f_row_bg(f_di_color(scan1DiM, scan1DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan1Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan2Ready
+        table.cell(screenerTable, 0, srow, scanSym2, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan2Bias), text_color=f_scan_bias_color(scan2Bias), bgcolor=f_row_bg(f_scan_bias_color(scan2Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan2Rsi), text_color=f_rsi_color(scan2Rsi), bgcolor=f_row_bg(f_rsi_color(scan2Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan2Adx, scan2DiP, scan2DiM), text_color=f_adx_color(scan2Adx, scan2DiP, scan2DiM), bgcolor=f_row_bg(f_adx_color(scan2Adx, scan2DiP, scan2DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan2DiP, scan2DiM), text_color=f_di_color(scan2DiP, scan2DiM), bgcolor=f_row_bg(f_di_color(scan2DiP, scan2DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan2DiM, scan2DiP), text_color=f_di_color(scan2DiM, scan2DiP), bgcolor=f_row_bg(f_di_color(scan2DiM, scan2DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan2Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan3Ready
+        table.cell(screenerTable, 0, srow, scanSym3, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan3Bias), text_color=f_scan_bias_color(scan3Bias), bgcolor=f_row_bg(f_scan_bias_color(scan3Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan3Rsi), text_color=f_rsi_color(scan3Rsi), bgcolor=f_row_bg(f_rsi_color(scan3Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan3Adx, scan3DiP, scan3DiM), text_color=f_adx_color(scan3Adx, scan3DiP, scan3DiM), bgcolor=f_row_bg(f_adx_color(scan3Adx, scan3DiP, scan3DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan3DiP, scan3DiM), text_color=f_di_color(scan3DiP, scan3DiM), bgcolor=f_row_bg(f_di_color(scan3DiP, scan3DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan3DiM, scan3DiP), text_color=f_di_color(scan3DiM, scan3DiP), bgcolor=f_row_bg(f_di_color(scan3DiM, scan3DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan3Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan4Ready
+        table.cell(screenerTable, 0, srow, scanSym4, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan4Bias), text_color=f_scan_bias_color(scan4Bias), bgcolor=f_row_bg(f_scan_bias_color(scan4Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan4Rsi), text_color=f_rsi_color(scan4Rsi), bgcolor=f_row_bg(f_rsi_color(scan4Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan4Adx, scan4DiP, scan4DiM), text_color=f_adx_color(scan4Adx, scan4DiP, scan4DiM), bgcolor=f_row_bg(f_adx_color(scan4Adx, scan4DiP, scan4DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan4DiP, scan4DiM), text_color=f_di_color(scan4DiP, scan4DiM), bgcolor=f_row_bg(f_di_color(scan4DiP, scan4DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan4DiM, scan4DiP), text_color=f_di_color(scan4DiM, scan4DiP), bgcolor=f_row_bg(f_di_color(scan4DiM, scan4DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan4Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan5Ready
+        table.cell(screenerTable, 0, srow, scanSym5, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan5Bias), text_color=f_scan_bias_color(scan5Bias), bgcolor=f_row_bg(f_scan_bias_color(scan5Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan5Rsi), text_color=f_rsi_color(scan5Rsi), bgcolor=f_row_bg(f_rsi_color(scan5Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan5Adx, scan5DiP, scan5DiM), text_color=f_adx_color(scan5Adx, scan5DiP, scan5DiM), bgcolor=f_row_bg(f_adx_color(scan5Adx, scan5DiP, scan5DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan5DiP, scan5DiM), text_color=f_di_color(scan5DiP, scan5DiM), bgcolor=f_row_bg(f_di_color(scan5DiP, scan5DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan5DiM, scan5DiP), text_color=f_di_color(scan5DiM, scan5DiP), bgcolor=f_row_bg(f_di_color(scan5DiM, scan5DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan5Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan6Ready
+        table.cell(screenerTable, 0, srow, scanSym6, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan6Bias), text_color=f_scan_bias_color(scan6Bias), bgcolor=f_row_bg(f_scan_bias_color(scan6Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan6Rsi), text_color=f_rsi_color(scan6Rsi), bgcolor=f_row_bg(f_rsi_color(scan6Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan6Adx, scan6DiP, scan6DiM), text_color=f_adx_color(scan6Adx, scan6DiP, scan6DiM), bgcolor=f_row_bg(f_adx_color(scan6Adx, scan6DiP, scan6DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan6DiP, scan6DiM), text_color=f_di_color(scan6DiP, scan6DiM), bgcolor=f_row_bg(f_di_color(scan6DiP, scan6DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan6DiM, scan6DiP), text_color=f_di_color(scan6DiM, scan6DiP), bgcolor=f_row_bg(f_di_color(scan6DiM, scan6DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan6Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan7Ready
+        table.cell(screenerTable, 0, srow, scanSym7, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan7Bias), text_color=f_scan_bias_color(scan7Bias), bgcolor=f_row_bg(f_scan_bias_color(scan7Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan7Rsi), text_color=f_rsi_color(scan7Rsi), bgcolor=f_row_bg(f_rsi_color(scan7Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan7Adx, scan7DiP, scan7DiM), text_color=f_adx_color(scan7Adx, scan7DiP, scan7DiM), bgcolor=f_row_bg(f_adx_color(scan7Adx, scan7DiP, scan7DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan7DiP, scan7DiM), text_color=f_di_color(scan7DiP, scan7DiM), bgcolor=f_row_bg(f_di_color(scan7DiP, scan7DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan7DiM, scan7DiP), text_color=f_di_color(scan7DiM, scan7DiP), bgcolor=f_row_bg(f_di_color(scan7DiM, scan7DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan7Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan8Ready
+        table.cell(screenerTable, 0, srow, scanSym8, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan8Bias), text_color=f_scan_bias_color(scan8Bias), bgcolor=f_row_bg(f_scan_bias_color(scan8Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan8Rsi), text_color=f_rsi_color(scan8Rsi), bgcolor=f_row_bg(f_rsi_color(scan8Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan8Adx, scan8DiP, scan8DiM), text_color=f_adx_color(scan8Adx, scan8DiP, scan8DiM), bgcolor=f_row_bg(f_adx_color(scan8Adx, scan8DiP, scan8DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan8DiP, scan8DiM), text_color=f_di_color(scan8DiP, scan8DiM), bgcolor=f_row_bg(f_di_color(scan8DiP, scan8DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan8DiM, scan8DiP), text_color=f_di_color(scan8DiM, scan8DiP), bgcolor=f_row_bg(f_di_color(scan8DiM, scan8DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan8Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan9Ready
+        table.cell(screenerTable, 0, srow, scanSym9, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan9Bias), text_color=f_scan_bias_color(scan9Bias), bgcolor=f_row_bg(f_scan_bias_color(scan9Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan9Rsi), text_color=f_rsi_color(scan9Rsi), bgcolor=f_row_bg(f_rsi_color(scan9Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan9Adx, scan9DiP, scan9DiM), text_color=f_adx_color(scan9Adx, scan9DiP, scan9DiM), bgcolor=f_row_bg(f_adx_color(scan9Adx, scan9DiP, scan9DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan9DiP, scan9DiM), text_color=f_di_color(scan9DiP, scan9DiM), bgcolor=f_row_bg(f_di_color(scan9DiP, scan9DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan9DiM, scan9DiP), text_color=f_di_color(scan9DiM, scan9DiP), bgcolor=f_row_bg(f_di_color(scan9DiM, scan9DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan9Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+    if scan10Ready
+        table.cell(screenerTable, 0, srow, scanSym10, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(screenerTable, 1, srow, f_scan_bias_text(scan10Bias), text_color=f_scan_bias_color(scan10Bias), bgcolor=f_row_bg(f_scan_bias_color(scan10Bias)), text_size=tableValueSize)
+        table.cell(screenerTable, 2, srow, f_rsi_text(scan10Rsi), text_color=f_rsi_color(scan10Rsi), bgcolor=f_row_bg(f_rsi_color(scan10Rsi)), text_size=tableValueSize)
+        table.cell(screenerTable, 3, srow, f_adx_text(scan10Adx, scan10DiP, scan10DiM), text_color=f_adx_color(scan10Adx, scan10DiP, scan10DiM), bgcolor=f_row_bg(f_adx_color(scan10Adx, scan10DiP, scan10DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 4, srow, f_di_text(scan10DiP, scan10DiM), text_color=f_di_color(scan10DiP, scan10DiM), bgcolor=f_row_bg(f_di_color(scan10DiP, scan10DiM)), text_size=tableValueSize)
+        table.cell(screenerTable, 5, srow, f_di_text(scan10DiM, scan10DiP), text_color=f_di_color(scan10DiM, scan10DiP), bgcolor=f_row_bg(f_di_color(scan10DiM, scan10DiP)), text_size=tableValueSize)
+        table.cell(screenerTable, 6, srow, str.tostring(scan10Px, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srow := srow + 1
+
+if barstate.islast and not showScreener
+    table.clear(screenerTable, 0, 0, 6, 10)
+
+//=========================================================
+// SIGNAL READ LEGEND (plain-English "what does this row mean",
+// same rows/order/visibility as the Main Dashboard)
+//=========================================================
+var table signalTable = table.new(signalReadPos, 2, 15, bgcolor=color.new(color.black, 20), border_width=1)
+
+if barstate.islast and showSignalRead
+    table.clear(signalTable, 0, 0, 1, 14)
+    table.cell(signalTable, 0, 0, "ROW", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+    table.cell(signalTable, 1, 0, "WHAT IT MEANS", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
+
+    int srdRow = 1
+    if showRowGrade
+        table.cell(signalTable, 0, srdRow, "Grade", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Composite entry filter - AVOID means no edge either side", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowForce
+        table.cell(signalTable, 0, srdRow, "Force", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Bull vs Bear weight across trend/MACD/EMA/structure/MTF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowTrend
+        table.cell(signalTable, 0, srdRow, "Trend", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "ADX strength + direction (above 25 = trending)", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowStructRow
+        table.cell(signalTable, 0, srdRow, "Struct", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "BOS/CHoCH market structure bias", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowTrapRow
+        table.cell(signalTable, 0, srdRow, "Trap", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Fakeout / liquidity-grab check before trusting the move", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowSweepRow
+        table.cell(signalTable, 0, srdRow, "Sweep", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Liquidity sweep (stop hunt) detection", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowAdvanceRow
+        table.cell(signalTable, 0, srdRow, "Advance", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Early continuation/reversal watch, ahead of the main signal", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowMtfRow
+        table.cell(signalTable, 0, srdRow, "MTF", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Higher-timeframe alignment across 2 configurable timeframes", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowTriggerRow
+        table.cell(signalTable, 0, srdRow, "B Trigger", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Price level to arm a Buy - crossing it alone won't fire a trade if Grade/Force disagree", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowTriggerRow
+        table.cell(signalTable, 0, srdRow, "S Trigger", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Price level to arm a Sell - crossing it alone won't fire a trade if Grade/Force disagree", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowAvoidChaseRow
+        table.cell(signalTable, 0, srdRow, "Chase", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Blocks entries too far from the trigger price", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowSession
+        table.cell(signalTable, 0, srdRow, "Session", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Info only - does not gate Buy/Sell, safe to ignore on 24/7 assets", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowZone
+        table.cell(signalTable, 0, srdRow, "Zone", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Price location vs the nearest Demand/Supply order block", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+    if showRowTargets
+        table.cell(signalTable, 0, srdRow, "TP/SL", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Auto TP1/TP2/SL from ATR - informational, shown regardless of Action", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
+
+if barstate.islast and not showSignalRead
+    table.clear(signalTable, 0, 0, 1, 14)
+
+//=========================================================
+// TRAP WARNING LABEL
+//=========================================================
+var label trapLabel = na
+if barstate.islast
+    if not na(trapLabel)
+        label.delete(trapLabel)
+    if showTrapWarnings and trapHigh
+        trapLabel := label.new(bar_index + 1, trapDirectionWord == "SELL" ? high + atrVal * 1.5 : low - atrVal * 1.5, "TRAP\n" + trapReasonText, xloc=xloc.bar_index, style=trapDirectionWord == "SELL" ? label.style_label_down : label.style_label_up, color=color.new(color.red, 0), textcolor=color.white, size=size.normal)
+
+//=========================================================
+// ORDER BLOCK ZONE BOXES (STR / Volume / OI / Volatility shown)
+//=========================================================
+var box demandZoneBox = na
+var box supplyZoneBox = na
+var label demandZoneLabel = na
+var label supplyZoneLabel = na
+
+if barstate.islast
+    if not na(demandZoneBox)
+        box.delete(demandZoneBox)
+    if not na(supplyZoneBox)
+        box.delete(supplyZoneBox)
+    if not na(demandZoneLabel)
+        label.delete(demandZoneLabel)
+    if not na(supplyZoneLabel)
+        label.delete(supplyZoneLabel)
+
+    if showOrderBlocks and not na(demandHigh) and not na(demandLow) and not demandConflictsWithActiveSupply
+        demandBoxFill = demandActive ? colDemandZoneFill : color.new(colDemandZoneFill, 92)
+        demandBoxBorder = demandActive ? colDemandZoneBorder : color.new(colDemandZoneBorder, 60)
+        demandStatusText = demandActive ? "" : " (STALE)"
+        demandZoneBox := box.new(left=demandBorn, top=demandHigh, right=bar_index + 1, bottom=demandLow, xloc=xloc.bar_index, bgcolor=demandBoxFill, border_color=demandBoxBorder, border_style=demandActive ? line.style_solid : line.style_dashed)
+        demandVolText = "\nVOL: " + f_format_vol(demandVolumeStored)
+        demandVolatilityText = na(demandVolatilityRatio) ? "" : "\nWIDTH: " + str.tostring(demandVolatilityRatio, "#.##") + "x ATR"
+        demandZoneLabel := label.new(bar_index, demandHigh, "DEMAND" + demandStatusText + "\nSTR: " + str.tostring(demandScoreStored, "#.0") + demandVolText + demandOiText + demandVolatilityText + "\nUNREALIZED: " + str.tostring(demandUnrealizedCount), style=label.style_label_left, color=demandBoxBorder, textcolor=color.white, size=size.small)
+
+    if showOrderBlocks and not na(supplyHigh) and not na(supplyLow) and not supplyConflictsWithActiveDemand
+        supplyBoxFill = supplyActive ? colSupplyZoneFill : color.new(colSupplyZoneFill, 92)
+        supplyBoxBorder = supplyActive ? colSupplyZoneBorder : color.new(colSupplyZoneBorder, 60)
+        supplyStatusText = supplyActive ? "" : " (STALE)"
+        supplyZoneBox := box.new(left=supplyBorn, top=supplyHigh, right=bar_index + 1, bottom=supplyLow, xloc=xloc.bar_index, bgcolor=supplyBoxFill, border_color=supplyBoxBorder, border_style=supplyActive ? line.style_solid : line.style_dashed)
+        supplyVolText = "\nVOL: " + f_format_vol(supplyVolumeStored)
+        supplyVolatilityText = na(supplyVolatilityRatio) ? "" : "\nWIDTH: " + str.tostring(supplyVolatilityRatio, "#.##") + "x ATR"
+        supplyZoneLabel := label.new(bar_index, supplyHigh, "SUPPLY" + supplyStatusText + "\nSTR: " + str.tostring(supplyScoreStored, "#.0") + supplyVolText + supplyOiText + supplyVolatilityText + "\nUNREALIZED: " + str.tostring(supplyUnrealizedCount), style=label.style_label_left, color=supplyBoxBorder, textcolor=color.white, size=size.small)
+
+//=========================================================
+// ALERTS
+//=========================================================
+if buySignal
+    alert(f_json("BUY"), alert.freq_once_per_bar_close)
+if sellSignal
+    alert(f_json("SELL"), alert.freq_once_per_bar_close)
+if showTrapWarnings and trapHigh
+    alert(f_json("TRAP_WARNING"), alert.freq_once_per_bar_close)
+if showStructure and (chochBull or chochBear)
+    alert(f_json(chochBull ? "CHOCH_BULL" : "CHOCH_BEAR"), alert.freq_once_per_bar_close)
+
+alertcondition(buySignal, "JF SMC Buy Signal", "JungleeFrogs SMC Edge System BUY on {{ticker}} {{interval}}")
+alertcondition(sellSignal, "JF SMC Sell Signal", "JungleeFrogs SMC Edge System SELL on {{ticker}} {{interval}}")
+alertcondition(chochBull or chochBear, "JF SMC CHoCH", "Change of Character on {{ticker}} {{interval}}")
+alertcondition(trapHigh, "JF SMC Trap Warning", "Trap / fake-breakout risk on {{ticker}} {{interval}}")

@@ -18,6 +18,7 @@ LEGACY_EXCLUDES=(
 # still has to pass, so only the filename-format check is skipped for these.
 FILENAME_ONLY_EXCLUDES=(
   "indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine"
+  "indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine"
 )
 
 is_excluded() {

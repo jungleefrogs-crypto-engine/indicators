@@ -27,7 +27,8 @@ pine-script-toolkit/
 │   ├── volume/                  # volume-flow-meter.pine
 │   └── JungleeFrogs/            # branded scripts, own PascalCase filename convention (see below)
 │       ├── TRAP-ATM-MTF-ADX/    # Order Block + Advanced MACD Predictor (legacy, not yet style-guide compliant)
-│       └── EMA-HL-PRESSURE-MATRIX/  # EMA High/Low Pressure Matrix
+│       ├── EMA-HL-PRESSURE-MATRIX/  # EMA High/Low Pressure Matrix
+│       └── SMC-EDGE-SYSTEM/     # Smart Money Edge System (a strategy() - native backtesting)
 ├── libraries/
 │   └── lib-core-utils.pine      # CoreUtils — shared helper functions
 ├── strategies/
@@ -82,6 +83,7 @@ To use it from your own scripts:
 | [`libraries/lib-core-utils.pine`](libraries/lib-core-utils.pine) | Library | Shared helper functions used across the scripts above. |
 | [`indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine`](indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine) | Indicator | Order Block detector + multi-timeframe AMP MACD predictor dashboard, with ATM CE/PE OI/IV. |
 | [`indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine`](indicators/JungleeFrogs/EMA-HL-PRESSURE-MATRIX/JungleeFrogs_EMA_HighLow_Pressure_Matrix.pine) | Indicator | EMA 9/20/50/200 on High & Low, Golden/Death cross, Safe Entry/Exit bubbles, and a 26-row Force/Pressure dashboard. |
+| [`indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`](indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine) | Strategy | Smart Money Concepts system: Order Blocks, Liquidity Sweep, BOS/CHoCH, MTF alignment, Trap warnings, auto TP/SL, Market Force Score, Entry Grade, a 10-symbol screener, and JSON webhook alerts - native backtesting via TradingView's Strategy Tester. |
 
 ## Conventions
 
