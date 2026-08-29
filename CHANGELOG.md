@@ -150,6 +150,15 @@ file records what changed and when, file by file.
   also red - red text on a red background, effectively illegible. Both
   now use `colRedTextCellBg` (yellow) instead.
 
+  Re-added "Tiny" to the Dashboard Font Size dropdown (one step smaller
+  than "Small"), at the same size mapping it had before it was pulled
+  earlier this session over a report of the table "vanishing" on that
+  setting. That report predates the `calc_on_every_tick` fix above, which
+  is a much more likely explanation for a table intermittently not
+  rendering than the font size itself - `size.tiny` is a normal, valid
+  Pine table size. Tooltip now just notes Tiny can be hard to read and to
+  fall back to Small if so.
+
   Fixed the Dashboard/Screener/Signal Read tables not appearing at all on
   the native TradingView mobile app (desktop/web worked fine) - the real
   cause, found from the Pine Editor's own compile warnings: with

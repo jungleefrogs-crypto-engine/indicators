@@ -55,7 +55,7 @@ showDashboard = input.bool(true, "Show Main Dashboard", group=groupMain)
 showScreener = input.bool(true, "Show Multi-Symbol Screener Table", group=groupMain)
 showSignalRead = input.bool(true, "Show Signal Read Legend Table", group=groupMain, tooltip="A plain-English 'what does this row mean' table - one line per Dashboard row currently visible, same order.")
 compactLabels = input.bool(true, "Compact Dashboard Labels (recommended for mobile)", group=groupMain)
-tableFontSizeInput = input.string("Small", "Dashboard Font Size", options=["Small", "Normal", "Large", "Huge"], group=groupMain, tooltip="\"Tiny\" was removed - at that size TradingView renders the value column too small to see, making the whole table look like it disappeared. \"Small\" is the smallest reliably visible size.")
+tableFontSizeInput = input.string("Small", "Dashboard Font Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=groupMain, tooltip="\"Tiny\" text can be hard to read on some screens - if the table looks like it vanished after picking it, switch back to \"Small\".")
 dashboardPositionInput = input.string("Top Right", "Dashboard Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupMain)
 screenerPositionInput = input.string("Bottom Right", "Screener Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupMain)
 signalReadPositionInput = input.string("Middle Right", "Signal Read Position", options=["Top Right", "Middle Right", "Bottom Right", "Top Left", "Middle Left", "Bottom Left"], group=groupMain)
@@ -63,9 +63,9 @@ colRedTextCellBg = input.color(color.new(color.yellow, 0), "Table Background Whe
 colBrand = input.color(color.new(color.rgb(0, 200, 150), 0), "JungleeFrogs Brand Color", group=groupMain)
 
 f_table_value_size(_s) =>
-    _s == "Small" ? size.small : _s == "Normal" ? size.normal : _s == "Large" ? size.large : size.huge
+    _s == "Tiny" ? size.tiny : _s == "Small" ? size.small : _s == "Normal" ? size.normal : _s == "Large" ? size.large : size.huge
 f_table_label_size(_s) =>
-    _s == "Small" ? size.tiny : _s == "Normal" ? size.small : _s == "Large" ? size.normal : size.large
+    _s == "Tiny" ? size.tiny : _s == "Small" ? size.tiny : _s == "Normal" ? size.small : _s == "Large" ? size.normal : size.large
 tableValueSize = f_table_value_size(tableFontSizeInput)
 tableLabelSize = f_table_label_size(tableFontSizeInput)
 f_position(_s) =>
