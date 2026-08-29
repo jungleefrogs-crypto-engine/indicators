@@ -150,6 +150,27 @@ file records what changed and when, file by file.
   also red - red text on a red background, effectively illegible. Both
   now use `colRedTextCellBg` (yellow) instead.
 
+  Added Pivot/R1-R3/S1-S3 levels (selectable timeframe, non-repainting -
+  same proven `request.security(..., lookahead=barmerge.lookahead_on)` on
+  the prior confirmed HTF bar technique as the EMA High/Low Pressure
+  Matrix indicator), plotted gold with `plot.style_linebr`. This file's
+  own PLOTS section comment used to say "Pivot-free (this system uses
+  zones, not pivots)" - updated now that it has them.
+
+  Added a "Predictable Target (Next Bar)" range box: current price +/- 1
+  ATR (this chart's own typical single-bar range) in whichever direction
+  the Market Force Score currently favors, drawn as a shaded box spanning
+  to the next bar with a label reading "NEXT <N> MIN TARGET" (N computed
+  from `timeframe.in_seconds(timeframe.period)`, so it always matches the
+  chart's own resolution) plus the projected price and % move. Note: Pine
+  cannot script TradingView's manual "Price Range" drawing tool - there is
+  no API for a script to create one, it is a mouse-drawn UI-only tool -
+  so this is a script-drawn box+label built to communicate the same
+  information (a shaded target zone with the price/percent delta
+  labeled), not a literal use of that tool. It is also explicitly a
+  volatility-based projection, not a guaranteed prediction; the tooltip
+  says so.
+
   Re-added "Tiny" to the Dashboard Font Size dropdown (one step smaller
   than "Small"), at the same size mapping it had before it was pulled
   earlier this session over a report of the table "vanishing" on that

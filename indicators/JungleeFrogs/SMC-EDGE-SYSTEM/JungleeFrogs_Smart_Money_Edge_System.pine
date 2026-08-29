@@ -13,8 +13,12 @@
 //               alerts, and native backtesting (this is a strategy(), so
 //               TradingView's Strategy Tester works out of the box). Fully
 //               configurable EMA 9/20/50/200 High+Low lines and VWAP
-//               (color/thickness/style/visibility each), and configurable
-//               Demand/Supply zones showing STR, Volume, OI, and Volatility.
+//               (color/thickness/style/visibility each), configurable
+//               Demand/Supply zones showing STR, Volume, OI, and Volatility,
+//               classic Pivot/R1-R3/S1-S3 levels (selectable timeframe), and
+//               a volatility-based "predictable target" range box projecting
+//               one ATR from price in the Market Force Score's favored
+//               direction, labeled with the chart's own timeframe in minutes.
 //
 //               PLATFORM LIMITS (cannot be coded around, by design of Pine/
 //               TradingView - not a bug in this script):
@@ -129,6 +133,24 @@ candleSegWidth = input.int(6, "Segment Width", minval=1, maxval=20, group=groupC
 candleHistory = input.int(20, "Visible History (Bars)", minval=5, maxval=60, group=groupCandle)
 colBuyPressure = input.color(color.new(color.blue, 0), "BUY Pressure Color", group=groupCandle)
 colSellPressure = input.color(color.new(color.yellow, 0), "SELL Pressure Color", group=groupCandle)
+
+//=========================================================
+// PIVOT POINTS
+//=========================================================
+groupPivot = "Pivot Points"
+showPivots = input.bool(true, "Show Pivot / R1 R2 R3 / S1 S2 S3", group=groupPivot)
+useChartTfPivot = input.bool(false, "Use Current Chart Timeframe For Pivot", group=groupPivot)
+pivotTfInput = input.timeframe("D", "Pivot Level Timeframe", group=groupPivot)
+colPivotLevels = input.color(color.new(color.rgb(255, 215, 0), 0), "Pivot/R/S Color", group=groupPivot)
+widPivotLevels = input.int(1, "Pivot/R/S Line Thickness", minval=1, maxval=6, group=groupPivot)
+
+//=========================================================
+// PREDICTABLE TARGET (NEXT BAR)
+//=========================================================
+groupNextTarget = "Predictable Target (Next Bar)"
+showNextTarget = input.bool(true, "Show Predictable Target Range Box", group=groupNextTarget, tooltip="A volatility-based projection, not a guaranteed prediction: current price +/- one ATR (this chart's typical single-bar range) in whichever direction the Market Force Score currently favors, labeled with how many minutes the chart's own timeframe represents.")
+colNextTargetBull = input.color(color.new(color.lime, 70), "Bullish Target Box Color", group=groupNextTarget)
+colNextTargetBear = input.color(color.new(color.red, 70), "Bearish Target Box Color", group=groupNextTarget)
 
 //=========================================================
 // ORDER BLOCKS / DEMAND-SUPPLY ZONES
@@ -303,6 +325,22 @@ rsiVal = ta.rsi(close, rsiLen)
 
 f_format_vol(_v) =>
     na(_v) ? "0" : _v >= 1000 ? str.tostring(_v, format.volume) : str.tostring(_v, "#.####")
+
+//=========================================================
+// PIVOT POINTS - selectable timeframe, non-repainting via lookahead_on on
+// the prior confirmed HTF bar's H/L/C (same technique proven in the EMA
+// High/Low Pressure Matrix indicator)
+//=========================================================
+pivotTf = useChartTfPivot ? timeframe.period : pivotTfInput
+[ph, pl, pc] = request.security(syminfo.tickerid, pivotTf, [high[1], low[1], close[1]], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+
+pivotPoint = (ph + pl + pc) / 3.0
+pivotR1 = 2.0 * pivotPoint - pl
+pivotS1 = 2.0 * pivotPoint - ph
+pivotR2 = pivotPoint + (ph - pl)
+pivotS2 = pivotPoint - (ph - pl)
+pivotR3 = ph + 2.0 * (pivotPoint - pl)
+pivotS3 = pl - 2.0 * (ph - pivotPoint)
 
 //=========================================================
 // ADX / DMI - Trend Strength Filter
@@ -841,8 +879,16 @@ if showCandlePressure
             liveSellLine := line.new(bar_index, sellBottom, bar_index, sellTop, xloc=xloc.bar_index, extend=extend.none, color=colSellPressure, width=candleSegWidth)
 
 //=========================================================
-// PLOTS - Pivot-free (this system uses zones, not pivots), EMA/VWAP, crosses
+// PLOTS - Pivot/R/S, EMA/VWAP, crosses
 //=========================================================
+plot(showPivots ? pivotPoint : na, "Pivot", color=colPivotLevels, linewidth=widPivotLevels, style=plot.style_linebr)
+plot(showPivots ? pivotR1 : na, "R1", color=colPivotLevels, linewidth=widPivotLevels, style=plot.style_linebr)
+plot(showPivots ? pivotR2 : na, "R2", color=colPivotLevels, linewidth=widPivotLevels, style=plot.style_linebr)
+plot(showPivots ? pivotR3 : na, "R3", color=colPivotLevels, linewidth=widPivotLevels, style=plot.style_linebr)
+plot(showPivots ? pivotS1 : na, "S1", color=colPivotLevels, linewidth=widPivotLevels, style=plot.style_linebr)
+plot(showPivots ? pivotS2 : na, "S2", color=colPivotLevels, linewidth=widPivotLevels, style=plot.style_linebr)
+plot(showPivots ? pivotS3 : na, "S3", color=colPivotLevels, linewidth=widPivotLevels, style=plot.style_linebr)
+
 plot(showEma9H ? ema9h : na, "EMA 9 High", color=colEma9H, linewidth=widEma9H, style=plotStyleSel)
 plot(showEma9L ? ema9l : na, "EMA 9 Low", color=colEma9L, linewidth=widEma9L, style=plotStyleSel)
 plot(showEma20H ? ema20h : na, "EMA 20 High", color=colEma20H, linewidth=widEma20H, style=plotStyleSel)
@@ -1200,6 +1246,32 @@ if barstate.islast
         supplyVolText = "\nVOL: " + f_format_vol(supplyVolumeStored)
         supplyVolatilityText = na(supplyVolatilityRatio) ? "" : "\nWIDTH: " + str.tostring(supplyVolatilityRatio, "#.##") + "x ATR"
         supplyZoneLabel := label.new(bar_index, supplyHigh, "SUPPLY" + supplyStatusText + "\nSTR: " + str.tostring(supplyScoreStored, "#.0") + supplyVolText + supplyOiText + supplyVolatilityText + "\nUNREALIZED: " + str.tostring(supplyUnrealizedCount), style=label.style_label_left, color=supplyBoxBorder, textcolor=color.white, size=size.small)
+
+//=========================================================
+// PREDICTABLE TARGET (NEXT BAR) - a volatility-based projection (current
+// price +/- 1 ATR, this chart's typical single-bar range) in whichever
+// direction the Market Force Score favors, drawn as a shaded range box
+// spanning to the next bar. This is NOT a guaranteed prediction - Pine
+// cannot control TradingView's manual Price Range drawing tool (that's a
+// UI-only tool with no script API), so this box+label is a script-drawn
+// equivalent: a shaded zone with the projected price and % move labeled.
+//=========================================================
+var box nextTargetBox = na
+var label nextTargetLabel = na
+
+if barstate.islast
+    if not na(nextTargetBox)
+        box.delete(nextTargetBox)
+    if not na(nextTargetLabel)
+        label.delete(nextTargetLabel)
+    if showNextTarget
+        nextTfMinutes = math.round(timeframe.in_seconds(timeframe.period) / 60)
+        nextTargetPrice = forceDominantBull ? close + atrVal : close - atrVal
+        nextTargetPct = (nextTargetPrice - close) / close * 100
+        nextTargetColor = forceDominantBull ? colNextTargetBull : colNextTargetBear
+        nextTargetBorder = forceDominantBull ? color.lime : color.red
+        nextTargetBox := box.new(left=bar_index, top=math.max(close, nextTargetPrice), right=bar_index + 1, bottom=math.min(close, nextTargetPrice), xloc=xloc.bar_index, bgcolor=nextTargetColor, border_color=nextTargetBorder, border_style=line.style_dashed)
+        nextTargetLabel := label.new(bar_index + 1, nextTargetPrice, "NEXT " + str.tostring(nextTfMinutes) + " MIN TARGET\n" + str.tostring(nextTargetPrice, format.mintick) + " (" + (nextTargetPct >= 0 ? "+" : "") + str.tostring(nextTargetPct, "#.##") + "%)", xloc=xloc.bar_index, style=forceDominantBull ? label.style_label_up : label.style_label_down, color=nextTargetBorder, textcolor=color.white, size=size.small)
 
 //=========================================================
 // ALERTS
