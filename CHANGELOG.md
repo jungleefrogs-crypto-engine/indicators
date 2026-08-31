@@ -10,6 +10,17 @@ file records what changed and when, file by file.
 ### Added
 
 - `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
+  fixed 16 "might not execute on every bar" compiler warnings on
+  `f_reversing_up_at()`/`f_reversing_down_at()` (PP's curvature check) -
+  same rule already applied to `ta.crossover()`/`ta.crossunder()`/
+  `ta.barssince()` earlier: a history-referencing call inside a
+  conditional expression (`ppPivotLowEvent and f_reversing_up_at(...)`)
+  isn't guaranteed to execute consistently across bars. All 16
+  combinations are now computed unconditionally first
+  (`reversingUp9H`/`reversingDown9H`/etc.), with the pivot-event gating
+  applied afterward on the already-computed booleans.
+
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
   fixed Best Entry Price sitting too far from the current close in
   practice - the nearest active zone edge is just whichever zone last
   formed, not necessarily a near one, and a distant zone made for a

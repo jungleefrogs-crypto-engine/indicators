@@ -495,22 +495,45 @@ ppPivotHigh = ta.pivothigh(high, ppPivotBars, ppPivotBars)
 ppPivotLowEvent = not na(ppPivotLow)
 ppPivotHighEvent = not na(ppPivotHigh)
 
-ppUp9H = ppPivotLowEvent and f_reversing_up_at(ema9h, ppBendWindow, ppPivotBars)
-ppDown9H = ppPivotHighEvent and f_reversing_down_at(ema9h, ppBendWindow, ppPivotBars)
-ppUp9L = ppPivotLowEvent and f_reversing_up_at(ema9l, ppBendWindow, ppPivotBars)
-ppDown9L = ppPivotHighEvent and f_reversing_down_at(ema9l, ppBendWindow, ppPivotBars)
-ppUp20H = ppPivotLowEvent and f_reversing_up_at(ema20h, ppBendWindow, ppPivotBars)
-ppDown20H = ppPivotHighEvent and f_reversing_down_at(ema20h, ppBendWindow, ppPivotBars)
-ppUp20L = ppPivotLowEvent and f_reversing_up_at(ema20l, ppBendWindow, ppPivotBars)
-ppDown20L = ppPivotHighEvent and f_reversing_down_at(ema20l, ppBendWindow, ppPivotBars)
-ppUp50H = ppPivotLowEvent and f_reversing_up_at(ema50h, ppBendWindow, ppPivotBars)
-ppDown50H = ppPivotHighEvent and f_reversing_down_at(ema50h, ppBendWindow, ppPivotBars)
-ppUp50L = ppPivotLowEvent and f_reversing_up_at(ema50l, ppBendWindow, ppPivotBars)
-ppDown50L = ppPivotHighEvent and f_reversing_down_at(ema50l, ppBendWindow, ppPivotBars)
-ppUp200H = ppPivotLowEvent and f_reversing_up_at(ema200h, ppBendWindow, ppPivotBars)
-ppDown200H = ppPivotHighEvent and f_reversing_down_at(ema200h, ppBendWindow, ppPivotBars)
-ppUp200L = ppPivotLowEvent and f_reversing_up_at(ema200l, ppBendWindow, ppPivotBars)
-ppDown200L = ppPivotHighEvent and f_reversing_down_at(ema200l, ppBendWindow, ppPivotBars)
+// f_reversing_up_at()/f_reversing_down_at() must run unconditionally
+// every bar (same rule already applied to ta.crossover()/ta.crossunder()
+// and ta.barssince() earlier in this file) - calling them only inside a
+// conditional branch produced compiler warnings, since Pine can't
+// guarantee the history-referencing call executes consistently across
+// bars when gated. Computed here first, gated afterward.
+reversingUp9H = f_reversing_up_at(ema9h, ppBendWindow, ppPivotBars)
+reversingDown9H = f_reversing_down_at(ema9h, ppBendWindow, ppPivotBars)
+reversingUp9L = f_reversing_up_at(ema9l, ppBendWindow, ppPivotBars)
+reversingDown9L = f_reversing_down_at(ema9l, ppBendWindow, ppPivotBars)
+reversingUp20H = f_reversing_up_at(ema20h, ppBendWindow, ppPivotBars)
+reversingDown20H = f_reversing_down_at(ema20h, ppBendWindow, ppPivotBars)
+reversingUp20L = f_reversing_up_at(ema20l, ppBendWindow, ppPivotBars)
+reversingDown20L = f_reversing_down_at(ema20l, ppBendWindow, ppPivotBars)
+reversingUp50H = f_reversing_up_at(ema50h, ppBendWindow, ppPivotBars)
+reversingDown50H = f_reversing_down_at(ema50h, ppBendWindow, ppPivotBars)
+reversingUp50L = f_reversing_up_at(ema50l, ppBendWindow, ppPivotBars)
+reversingDown50L = f_reversing_down_at(ema50l, ppBendWindow, ppPivotBars)
+reversingUp200H = f_reversing_up_at(ema200h, ppBendWindow, ppPivotBars)
+reversingDown200H = f_reversing_down_at(ema200h, ppBendWindow, ppPivotBars)
+reversingUp200L = f_reversing_up_at(ema200l, ppBendWindow, ppPivotBars)
+reversingDown200L = f_reversing_down_at(ema200l, ppBendWindow, ppPivotBars)
+
+ppUp9H = ppPivotLowEvent and reversingUp9H
+ppDown9H = ppPivotHighEvent and reversingDown9H
+ppUp9L = ppPivotLowEvent and reversingUp9L
+ppDown9L = ppPivotHighEvent and reversingDown9L
+ppUp20H = ppPivotLowEvent and reversingUp20H
+ppDown20H = ppPivotHighEvent and reversingDown20H
+ppUp20L = ppPivotLowEvent and reversingUp20L
+ppDown20L = ppPivotHighEvent and reversingDown20L
+ppUp50H = ppPivotLowEvent and reversingUp50H
+ppDown50H = ppPivotHighEvent and reversingDown50H
+ppUp50L = ppPivotLowEvent and reversingUp50L
+ppDown50L = ppPivotHighEvent and reversingDown50L
+ppUp200H = ppPivotLowEvent and reversingUp200H
+ppDown200H = ppPivotHighEvent and reversingDown200H
+ppUp200L = ppPivotLowEvent and reversingUp200L
+ppDown200L = ppPivotHighEvent and reversingDown200L
 
 ppVisibleCount = (showEma9H ? 1 : 0) + (showEma9L ? 1 : 0) + (showEma20H ? 1 : 0) + (showEma20L ? 1 : 0) + (showEma50H ? 1 : 0) + (showEma50L ? 1 : 0) + (showEma200H ? 1 : 0) + (showEma200L ? 1 : 0)
 ppUpCount = (showEma9H and ppUp9H ? 1 : 0) + (showEma9L and ppUp9L ? 1 : 0) + (showEma20H and ppUp20H ? 1 : 0) + (showEma20L and ppUp20L ? 1 : 0) + (showEma50H and ppUp50H ? 1 : 0) + (showEma50L and ppUp50L ? 1 : 0) + (showEma200H and ppUp200H ? 1 : 0) + (showEma200L and ppUp200L ? 1 : 0)
