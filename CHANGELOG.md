@@ -150,6 +150,16 @@ file records what changed and when, file by file.
   also red - red text on a red background, effectively illegible. Both
   now use `colRedTextCellBg` (yellow) instead.
 
+  Added a "Momentum" row to the Dashboard (and its explanation on the
+  Signal Read table) - `ta.mom(close, momLen)` (new "Momentum Length"
+  input, default 10, in the Trend Strength & Indicator Settings group),
+  runs directly on the chart's own series with no `request.security()`
+  involved, so it's inherently tied to whatever timeframe is currently
+  selected. Shows the raw price-change value with a green up arrow when
+  positive, red down arrow (yellow background, matching the rest of the
+  file's red-text convention) when negative. Both Dashboard and Signal
+  Read table row counts bumped from 15 to 16 to fit the new row.
+
   Added a "Current Price Line" - a dotted, bold, dark reference line at
   the current close extending right ("Show Current Price Line", own
   color/thickness inputs). TradingView's own built-in last-price line

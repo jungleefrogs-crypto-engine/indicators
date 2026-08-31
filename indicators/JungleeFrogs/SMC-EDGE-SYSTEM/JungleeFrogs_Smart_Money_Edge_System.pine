@@ -201,6 +201,7 @@ adxSmoothLen = input.int(14, "ADX Smoothing", minval=1, group=groupMisc)
 adxTrendLevel = input.float(20.0, "ADX Trend Level", minval=1.0, step=0.5, group=groupMisc)
 atrLen = input.int(14, "ATR Length", minval=1, group=groupMisc)
 rsiLen = input.int(14, "RSI Length", minval=1, group=groupMisc)
+momLen = input.int(10, "Momentum Length", minval=1, group=groupMisc)
 
 //=========================================================
 // MULTI-TIMEFRAME DASHBOARD
@@ -316,6 +317,7 @@ showRowTriggerRow = input.bool(true, "B Trigger / S Trigger", group=groupRowVis,
 showRowAvoidChaseRow = input.bool(true, "Avoid-Chase", group=groupRowVis)
 showRowSession = input.bool(true, "Session", group=groupRowVis)
 showRowZone = input.bool(true, "Nearest Zone", group=groupRowVis)
+showRowMomentum = input.bool(true, "Momentum", group=groupRowVis)
 showRowTargets = input.bool(true, "TP1 / TP2 / SL", group=groupRowVis)
 
 //=========================================================
@@ -339,6 +341,9 @@ atrVal = ta.atr(atrLen)
 volSma = ta.sma(volume, 20)
 vwapVal = ta.vwap(hlc3)
 rsiVal = ta.rsi(close, rsiLen)
+momVal = ta.mom(close, momLen)
+momBull = momVal > 0
+momBear = momVal < 0
 
 f_format_vol(_v) =>
     na(_v) ? "0" : _v >= 1000 ? str.tostring(_v, format.volume) : str.tostring(_v, "#.####")
@@ -982,10 +987,10 @@ actionText = trapHigh ? "AVOID" : buySignal ? "BUY NOW" : sellSignal ? "SELL NOW
 actionColor = trapHigh ? color.red : actionText == "BUY NOW" or actionText == "PREPARE BUY" ? color.lime : actionText == "SELL NOW" or actionText == "PREPARE SELL" ? color.red : color.white
 actionBg = trapHigh ? colRedTextCellBg : actionText == "BUY NOW" ? color.new(color.green, 0) : actionText == "SELL NOW" ? colRedTextCellBg : color.new(color.gray, 20)
 
-var table dashTable = table.new(dashboardPos, 2, 15, bgcolor=color.new(color.black, 20), border_width=1)
+var table dashTable = table.new(dashboardPos, 2, 16, bgcolor=color.new(color.black, 20), border_width=1)
 
 if barstate.islast and showDashboard
-    table.clear(dashTable, 0, 0, 1, 14)
+    table.clear(dashTable, 0, 0, 1, 15)
     table.cell(dashTable, 0, 0, "ACTION", text_color=color.white, bgcolor=actionBg, text_size=tableLabelSize)
     table.cell(dashTable, 1, 0, actionText, text_color=actionColor, bgcolor=actionBg, text_size=tableValueSize)
 
@@ -1042,6 +1047,10 @@ if barstate.islast and showDashboard
         table.cell(dashTable, 0, row, compactLabels ? "Zone" : "Nearest Zone", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(dashTable, 1, row, nearDemand ? "NEAR DEMAND" : nearSupply ? "NEAR SUPPLY" : "MID-RANGE", text_color=nearDemand ? color.lime : nearSupply ? color.red : color.white, bgcolor=nearSupply ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
         row := row + 1
+    if showRowMomentum
+        table.cell(dashTable, 0, row, "Momentum", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(dashTable, 1, row, str.tostring(momVal, format.mintick) + (momBull ? " ▲" : momBear ? " ▼" : " →"), text_color=momBull ? color.lime : momBear ? color.red : color.white, bgcolor=momBear ? colRedTextCellBg : color.new(color.black, 0), text_size=tableValueSize)
+        row := row + 1
     if showRowTargets
         table.cell(dashTable, 0, row, compactLabels ? "TP/SL" : "TP1 / TP2 / SL", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         targetsText = entryGradeSide == "SELL" ? "TP " + str.tostring(shortTP1, format.mintick) + "/" + str.tostring(shortTP2, format.mintick) + " SL " + str.tostring(shortSL, format.mintick) : "TP " + str.tostring(longTP1, format.mintick) + "/" + str.tostring(longTP2, format.mintick) + " SL " + str.tostring(longSL, format.mintick)
@@ -1049,7 +1058,7 @@ if barstate.islast and showDashboard
         row := row + 1
 
 if barstate.islast and not showDashboard
-    table.clear(dashTable, 0, 0, 1, 14)
+    table.clear(dashTable, 0, 0, 1, 15)
 
 //=========================================================
 // MULTI-SYMBOL SCREENER TABLE
@@ -1165,10 +1174,10 @@ if barstate.islast and not showScreener
 // SIGNAL READ LEGEND (plain-English "what does this row mean",
 // same rows/order/visibility as the Main Dashboard)
 //=========================================================
-var table signalTable = table.new(signalReadPos, 2, 15, bgcolor=color.new(color.black, 20), border_width=1)
+var table signalTable = table.new(signalReadPos, 2, 16, bgcolor=color.new(color.black, 20), border_width=1)
 
 if barstate.islast and showSignalRead
-    table.clear(signalTable, 0, 0, 1, 14)
+    table.clear(signalTable, 0, 0, 1, 15)
     table.cell(signalTable, 0, 0, "ROW", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
     table.cell(signalTable, 1, 0, "WHAT IT MEANS", text_color=color.white, bgcolor=color.new(colBrand, 0), text_size=tableLabelSize)
 
@@ -1225,13 +1234,17 @@ if barstate.islast and showSignalRead
         table.cell(signalTable, 0, srdRow, "Zone", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(signalTable, 1, srdRow, "Price location vs the nearest Demand/Supply order block", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
         srdRow := srdRow + 1
+    if showRowMomentum
+        table.cell(signalTable, 0, srdRow, "Momentum", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
+        table.cell(signalTable, 1, srdRow, "Price change over the Momentum Length lookback - rising or falling", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
+        srdRow := srdRow + 1
     if showRowTargets
         table.cell(signalTable, 0, srdRow, "TP/SL", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableLabelSize)
         table.cell(signalTable, 1, srdRow, "Auto TP1/TP2/SL from ATR - informational, shown regardless of Action", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableValueSize)
         srdRow := srdRow + 1
 
 if barstate.islast and not showSignalRead
-    table.clear(signalTable, 0, 0, 1, 14)
+    table.clear(signalTable, 0, 0, 1, 15)
 
 //=========================================================
 // TRAP WARNING LABEL
