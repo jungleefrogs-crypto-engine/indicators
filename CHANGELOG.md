@@ -150,6 +150,38 @@ file records what changed and when, file by file.
   also red - red text on a red background, effectively illegible. Both
   now use `colRedTextCellBg` (yellow) instead.
 
+  Added a "Current Price Line" - a dotted, bold, dark reference line at
+  the current close extending right ("Show Current Price Line", own
+  color/thickness inputs). TradingView's own built-in last-price line
+  can't be restyled from a script (that's a chart-level Symbol setting,
+  not scriptable), so this is a separate script-drawn line for that.
+
+  Added a "Best Entry Price" line + label - the nearest active zone edge
+  in the direction the Market Force Score favors (top of an active
+  Demand zone for a buy, bottom of an active Supply zone for a sell - a
+  retest entry, not a chase), falling back to the B/S Trigger breakout
+  level when there's no active zone on that side yet. This is distinct
+  from the existing TP/SL row and Predictable Target box, which only
+  showed where price might exit/go, not where to get in.
+
+  Fixed all 4 EMA cross pairs (8 labels total) being invisible by
+  default: they were gated behind Clean Chart Mode (default on), same as
+  the original Golden/Death H pair, but that made a feature explicitly
+  asked for look broken with no on-chart explanation. Removed the Clean
+  Chart Mode gate from all of them - they now stay visible the same way
+  CHoCH already does (a meaningful, infrequent signal, not routine
+  noise), regardless of Clean Chart Mode.
+
+  Added the 3 missing EMA crossover pairs (the 50H/200H Golden/Death
+  Cross already existed) - EMA9H x EMA20H fires "GH Cross"/"DH Cross",
+  EMA9L x EMA20L fires "GL Cross"/"DL Cross", EMA50L x EMA200L fires
+  "GOLDEN L Cross"/"DEATH L Cross", and the original 50H/200H pair is
+  relabeled "GOLDEN H Cross"/"DEATH H Cross" to distinguish it from the
+  new L pair. All 4 pairs share the existing Golden/Death Cross color
+  inputs and are gated behind Clean Chart Mode like the original pair -
+  the fast 9/20 crosses fire often enough that they'd otherwise clutter
+  the default view.
+
   Added Pivot/R1-R3/S1-S3 levels (selectable timeframe, non-repainting -
   same proven `request.security(..., lookahead=barmerge.lookahead_on)` on
   the prior confirmed HTF bar technique as the EMA High/Low Pressure

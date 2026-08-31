@@ -54,7 +54,7 @@ showBuySellLabels = input.bool(true, "Show Buy/Sell Labels", group=groupMain)
 showOrderBlocks = input.bool(true, "Show Order Block (Demand/Supply) Zones", group=groupMain)
 showStructure = input.bool(true, "Show BOS/CHoCH Structure Labels", group=groupMain)
 showTrapWarnings = input.bool(true, "Show Trap / Fake-Breakout Warnings", group=groupMain)
-cleanChartMode = input.bool(true, "Clean Chart Mode", group=groupMain, tooltip="Forces off the routine BOS triangles, HH/HL/LH/LL swing labels, and Golden/Death Cross text labels, regardless of their own settings - the chart fills up with those fast and buries the parts that actually drive a decision. CHoCH stays on even in Clean Mode (it's the rare, meaningful reversal signal, not routine noise), along with Buy/Sell labels, Demand/Supply zones, Trap warnings, and the dashboards. Turn this off to see the full raw-structure view.")
+cleanChartMode = input.bool(true, "Clean Chart Mode", group=groupMain, tooltip="Forces off the routine BOS triangles and HH/HL/LH/LL swing labels, regardless of their own settings - the chart fills up with those fast and buries the parts that actually drive a decision. CHoCH and all 8 EMA cross labels (GH/DH, GL/DL, Golden/Death H, Golden/Death L) stay on even in Clean Mode - they're meaningful, infrequent-enough signals, not routine noise - along with Buy/Sell labels, Demand/Supply zones, Trap warnings, and the dashboards. Turn this off to see the full raw-structure view.")
 showDashboard = input.bool(true, "Show Main Dashboard", group=groupMain)
 showScreener = input.bool(true, "Show Multi-Symbol Screener Table", group=groupMain)
 showSignalRead = input.bool(true, "Show Signal Read Legend Table", group=groupMain, tooltip="A plain-English 'what does this row mean' table - one line per Dashboard row currently visible, same order.")
@@ -143,6 +143,23 @@ useChartTfPivot = input.bool(false, "Use Current Chart Timeframe For Pivot", gro
 pivotTfInput = input.timeframe("D", "Pivot Level Timeframe", group=groupPivot)
 colPivotLevels = input.color(color.new(color.rgb(255, 215, 0), 0), "Pivot/R/S Color", group=groupPivot)
 widPivotLevels = input.int(1, "Pivot/R/S Line Thickness", minval=1, maxval=6, group=groupPivot)
+
+//=========================================================
+// CURRENT PRICE LINE
+//=========================================================
+groupCurrentPrice = "Current Price Line"
+showCurrentPriceLine = input.bool(true, "Show Current Price Line", group=groupCurrentPrice, tooltip="A dotted reference line at the current close, extending right. TradingView's own built-in last-price line can't be restyled from a script - this is a separate, script-drawn line for that purpose.")
+colCurrentPriceLine = input.color(color.new(color.rgb(30, 30, 30), 0), "Current Price Line Color", group=groupCurrentPrice)
+widCurrentPriceLine = input.int(2, "Current Price Line Thickness", minval=1, maxval=6, group=groupCurrentPrice)
+
+//=========================================================
+// BEST ENTRY PRICE
+//=========================================================
+groupBestEntry = "Best Entry Price"
+showBestEntry = input.bool(true, "Show Best Entry Price Line", group=groupBestEntry, tooltip="The nearest active zone edge in the Market Force Score's favored direction - the top of an active Demand zone for a buy, the bottom of an active Supply zone for a sell (a retest entry, not a chase). Falls back to the B/S Trigger breakout level when there's no active zone on that side yet.")
+colBestEntryBull = input.color(color.new(color.lime, 0), "Best Buy Entry Color", group=groupBestEntry)
+colBestEntryBear = input.color(color.new(color.red, 0), "Best Sell Entry Color", group=groupBestEntry)
+widBestEntry = input.int(2, "Best Entry Line Thickness", minval=1, maxval=6, group=groupBestEntry)
 
 //=========================================================
 // PREDICTABLE TARGET (NEXT BAR)
@@ -899,10 +916,25 @@ plot(showEma200H ? ema200h : na, "EMA 200 High", color=colEma200H, linewidth=wid
 plot(showEma200L ? ema200l : na, "EMA 200 Low", color=colEma200L, linewidth=widEma200L, style=plotStyleSel)
 plot(showVwapLine ? vwapVal : na, "VWAP", color=colVwap, linewidth=widVwap, style=plotStyleSel)
 
+crossGH = ta.crossover(ema9h, ema20h)
+crossDH = ta.crossunder(ema9h, ema20h)
+plotshape(crossGH ? ema20h : na, title="GH Cross", text="GH\nCROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
+plotshape(crossDH ? ema20h : na, title="DH Cross", text="DH\nCROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
+
+crossGL = ta.crossover(ema9l, ema20l)
+crossDL = ta.crossunder(ema9l, ema20l)
+plotshape(crossGL ? ema20l : na, title="GL Cross", text="GL\nCROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
+plotshape(crossDL ? ema20l : na, title="DL Cross", text="DL\nCROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
+
 goldenCross = ta.crossover(ema50h, ema200h)
 deathCross = ta.crossunder(ema50h, ema200h)
-plotshape(not cleanChartMode and goldenCross ? ema200h : na, title="Golden Cross", text="GOLDEN\nCROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
-plotshape(not cleanChartMode and deathCross ? ema200h : na, title="Death Cross", text="DEATH\nCROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
+plotshape(goldenCross ? ema200h : na, title="Golden H Cross", text="GOLDEN H\nCROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
+plotshape(deathCross ? ema200h : na, title="Death H Cross", text="DEATH H\nCROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
+
+goldenCrossL = ta.crossover(ema50l, ema200l)
+deathCrossL = ta.crossunder(ema50l, ema200l)
+plotshape(goldenCrossL ? ema200l : na, title="Golden L Cross", text="GOLDEN L\nCROSS", location=location.absolute, style=shape.labelup, size=size.small, color=colGolden, textcolor=color.black)
+plotshape(deathCrossL ? ema200l : na, title="Death L Cross", text="DEATH L\nCROSS", location=location.absolute, style=shape.labeldown, size=size.small, color=colDeath, textcolor=color.white)
 
 //=========================================================
 // BUY/SELL LABELS
@@ -1246,6 +1278,36 @@ if barstate.islast
         supplyVolText = "\nVOL: " + f_format_vol(supplyVolumeStored)
         supplyVolatilityText = na(supplyVolatilityRatio) ? "" : "\nWIDTH: " + str.tostring(supplyVolatilityRatio, "#.##") + "x ATR"
         supplyZoneLabel := label.new(bar_index, supplyHigh, "SUPPLY" + supplyStatusText + "\nSTR: " + str.tostring(supplyScoreStored, "#.0") + supplyVolText + supplyOiText + supplyVolatilityText + "\nUNREALIZED: " + str.tostring(supplyUnrealizedCount), style=label.style_label_left, color=supplyBoxBorder, textcolor=color.white, size=size.small)
+
+//=========================================================
+// CURRENT PRICE LINE - TradingView's own last-price line can't be
+// restyled from a script, so this is a separate dotted line drawn at
+// the current close, extending right.
+//=========================================================
+var line currentPriceLine = na
+if barstate.islast
+    if not na(currentPriceLine)
+        line.delete(currentPriceLine)
+    if showCurrentPriceLine
+        currentPriceLine := line.new(bar_index, close, bar_index + 1, close, xloc=xloc.bar_index, extend=extend.right, style=line.style_dotted, color=colCurrentPriceLine, width=widCurrentPriceLine)
+
+//=========================================================
+// BEST ENTRY PRICE - the nearest active zone edge in the favored
+// direction (a retest entry, not a chase). Falls back to the B/S
+// Trigger breakout level when there's no active zone on that side.
+//=========================================================
+var line bestEntryLine = na
+var label bestEntryLabel = na
+if barstate.islast
+    if not na(bestEntryLine)
+        line.delete(bestEntryLine)
+    if not na(bestEntryLabel)
+        label.delete(bestEntryLabel)
+    if showBestEntry
+        bestEntryPrice = forceDominantBull ? (demandActive ? demandHigh : high) : (supplyActive ? supplyLow : low)
+        bestEntryColor = forceDominantBull ? colBestEntryBull : colBestEntryBear
+        bestEntryLine := line.new(bar_index, bestEntryPrice, bar_index + 1, bestEntryPrice, xloc=xloc.bar_index, extend=extend.right, style=line.style_dashed, color=bestEntryColor, width=widBestEntry)
+        bestEntryLabel := label.new(bar_index + 1, bestEntryPrice, (forceDominantBull ? "BEST BUY ENTRY\n" : "BEST SELL ENTRY\n") + str.tostring(bestEntryPrice, format.mintick), xloc=xloc.bar_index, style=forceDominantBull ? label.style_label_up : label.style_label_down, color=bestEntryColor, textcolor=color.white, size=size.small)
 
 //=========================================================
 // PREDICTABLE TARGET (NEXT BAR) - a volatility-based projection (current
