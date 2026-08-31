@@ -187,7 +187,7 @@ showPerfectPosition = input.bool(true, "Show Perfect Position (PP) Vertical Line
 colPerfectPosition = input.color(color.new(color.rgb(0, 0, 139), 0), "PP Line/Label Color", group=groupPP)
 widPerfectPosition = input.int(2, "PP Line Thickness", minval=1, maxval=6, group=groupPP)
 ppBendWindow = input.int(4, "PP Curvature Window (Bars)", minval=2, maxval=30, group=groupPP, tooltip="A line counts as reversing when its net move over the last N bars is opposite (or noticeably smaller than) its net move over the N bars before that - a smoothed curvature check, not a single-bar comparison, so it isn't thrown off by normal EMA jitter. Smaller = fires closer to where the bend actually starts but noisier (values of 2-3 fired on noise, not real reversals, in testing), larger = smoother but confirms later.")
-ppCooldownBars = input.int(10, "PP Cooldown (Bars)", minval=1, maxval=100, group=groupPP, tooltip="Minimum bars between two PP markers - stops a burst of near-simultaneous triggers around one reversal from drawing several overlapping lines.")
+ppCooldownBars = input.int(5, "PP Cooldown (Bars)", minval=1, maxval=100, group=groupPP, tooltip="Minimum bars between two PP markers - stops a burst of near-simultaneous triggers around one reversal from drawing several overlapping lines. Set too high, it can also block a second, genuinely distinct reversal that happens to follow soon after the first one - lower this if two real turns close together aren't both getting marked.")
 ppPivotBars = input.int(3, "PP Pivot Left/Right Bars", minval=1, maxval=20, group=groupPP, tooltip="How many bars on each side must be higher/lower for a swing to count as a PP pivot. Independent from the main \"Structure Pivot Left/Right Bars\" setting, and usually smaller/more sensitive - PP is meant to catch minor local turns too, not just the major swings the BOS/CHoCH structure engine deliberately limits itself to.")
 
 //=========================================================
@@ -490,8 +490,29 @@ f_reversing_down_at(_src, _len, _offset) =>
     _prior = _src[_offset + _len] - _src[_offset + _len * 2]
     _prior > 0 and (_recent < 0 or math.abs(_recent) < math.abs(_prior) * 0.7)
 
-ppPivotLow = ta.pivotlow(low, ppPivotBars, ppPivotBars)
-ppPivotHigh = ta.pivothigh(high, ppPivotBars, ppPivotBars)
+// Custom, non-strict pivot check (ties still count) instead of
+// ta.pivotlow()/ta.pivothigh() - those require the low/high to be
+// STRICTLY the most extreme in the window, so a flat or double-bottom/
+// top (two candles sharing a similar low/high, common in a
+// consolidation) can fail to register as a pivot at all, no matter how
+// strong the EMA agreement is right there.
+f_approx_pivot_low(_bars) =>
+    _candidate = low[_bars]
+    _ok = true
+    for i = 1 to _bars
+        if low[_bars - i] < _candidate or low[_bars + i] < _candidate
+            _ok := false
+    _ok ? _candidate : na
+f_approx_pivot_high(_bars) =>
+    _candidate = high[_bars]
+    _ok = true
+    for i = 1 to _bars
+        if high[_bars - i] > _candidate or high[_bars + i] > _candidate
+            _ok := false
+    _ok ? _candidate : na
+
+ppPivotLow = f_approx_pivot_low(ppPivotBars)
+ppPivotHigh = f_approx_pivot_high(ppPivotBars)
 ppPivotLowEvent = not na(ppPivotLow)
 ppPivotHighEvent = not na(ppPivotHigh)
 

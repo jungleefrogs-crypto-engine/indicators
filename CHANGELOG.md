@@ -10,7 +10,49 @@ file records what changed and when, file by file.
 ### Added
 
 - `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
-  fixed 16 "might not execute on every bar" compiler warnings on
+  fixed PP still not marking a genuinely obvious reversal even after the
+  cooldown fix - `ta.pivotlow()`/`ta.pivothigh()` require the low/high to
+  be STRICTLY the most extreme bar in the window, so a flat or double-
+  bottom/top (two candles sharing a similar low, common in a
+  consolidation - exactly what live testing showed at the missed spot)
+  can fail to register as a pivot at all, no matter how strong the EMA
+  agreement is right there. Replaced with a custom, non-strict pivot
+  check (`f_approx_pivot_low`/`f_approx_pivot_high`, ties still count),
+  computed unconditionally per the same rule as the other history-
+  referencing functions in this file. Tradeoff: a wide flat bottom
+  spanning more bars than the cooldown window could still produce more
+  than one PP marker for what's really one event - an acceptable cost
+  next to missing the reversal entirely.
+
+  Lowered the default "PP Cooldown (Bars)" from 10 to 5 - live testing
+  showed a second, genuinely distinct reversal (with GL Cross/Golden H
+  Cross/Golden L Cross/CHoCH all clustered right at it, a stronger
+  signal than the first) went unmarked because it followed the first PP
+  within the 10-bar cooldown window. 5 bars still blocks a pure noise
+  burst (which clusters within 1-3 bars) while giving two real,
+  distinct turns closer together a better chance to both register.
+
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
+  optimized for performance and a reported chart-price mismatch. With
+  `calc_on_every_tick=true` (needed for the mobile table-visibility fix
+  earlier), the script was re-running every table rebuild and every
+  line/label/box delete-and-recreate cycle - 16 separate
+  `if barstate.islast` blocks (Dashboard, Screener, Signal Read, Zone
+  Boxes, Trap Label, Buy/Sell grade label, Current Price/Best Entry/SL/
+  TP lines, Predictable Target, live candle-pressure fill) - on every
+  single incoming tick, not just once per bar. On a fast-moving symbol
+  this is enough work that the drawn output can visibly lag behind the
+  actual live price, which is the most likely explanation for "the
+  TradingView price doesn't match the chart." Added a shared redraw
+  throttle (`shouldRedraw`, new "Redraw Throttle (Milliseconds)" input,
+  default 300ms) and replaced all 16 `barstate.islast` drawing gates
+  with it - every underlying calculation, signal, and alert still
+  evaluates on every tick exactly as before (unaffected - the input's
+  own tooltip says so), only how often the already-correct results get
+  redrawn is throttled. `autoLockBar`'s own unrelated `barstate.islast`
+  check (option-symbol locking, not drawing) was left untouched.
+
+  Fixed 16 "might not execute on every bar" compiler warnings on
   `f_reversing_up_at()`/`f_reversing_down_at()` (PP's curvature check) -
   same rule already applied to `ta.crossover()`/`ta.crossunder()`/
   `ta.barssince()` earlier: a history-referencing call inside a
