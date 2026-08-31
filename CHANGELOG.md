@@ -9,6 +9,52 @@ file records what changed and when, file by file.
 
 ### Added
 
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
+  fixed Best Entry Price sitting too far from the current close in
+  practice - the nearest active zone edge is just whichever zone last
+  formed, not necessarily a near one, and a distant zone made for a
+  wide, less realistic entry that ate into the move available before TP.
+  Added "Best Entry Max Distance (x ATR)" (default 1.0) - when the zone
+  edge exceeds that distance from close, Best Entry falls back to a
+  level exactly that many ATRs from price instead, keeping the entry
+  within a comfortable, realistically-reachable range.
+
+  Follow-up: that cap was a hard on/off switch (exact zone edge, or
+  exact ATR-cap level - nothing in between), which caused a sudden jump
+  right at the threshold instead of trailing smoothly. Replaced with a
+  continuous clamp (`math.max`/`math.min` of the zone edge and the ATR-
+  cap level) - Entry now trails toward price exactly like TP whenever
+  the zone is out of comfortable range, and only locks onto the static
+  zone level once price is close enough for that structure to matter.
+  TP still trails unconditionally (it's defined relative to close every
+  bar by design); Entry stays anchored to real zone structure rather
+  than blindly tracking price, since a retest level that just followed
+  price 1:1 would no longer mean anything structurally.
+
+  Made Stop Loss an actual trailing stop, not just a fresh-each-bar
+  recalculation like TP/Entry. `longSL`/`shortSL` are now backed by
+  persistent state (`trailLongSL`/`trailShortSL`) that only ever
+  tightens in the favorable direction (`math.max` for longs, `math.min`
+  for shorts against the raw zone/ATR-based level each bar), resetting
+  only when the Force Score's dominant side flips - a trailing stop only
+  makes sense within one continuous directional stance. This isn't just
+  a dashboard/display change: `strategy.exit()` already used
+  `stop=longSL`/`stop=shortSL`, so the actual backtest exit orders now
+  trail too, not only the TP/SL row and JSON webhook payload.
+
+  Follow-up: the trailing SL had no visible line on the chart at all -
+  it only ever showed as text in the Dashboard's TP/SL row and the JSON
+  payload. Added a dotted "Stop Loss Line" (own settings group: show
+  toggle, color, thickness) showing the current longSL/shortSL (the
+  same level strategy.exit() uses) with a "STOP LOSS" label, matching
+  the same on-chart-line pattern as Current Price Line and Best Entry.
+
+  Added dotted "Take Profit Lines" the same way - TP1 (teal, first
+  target) and TP2 (green, final target - the same level strategy.exit()
+  actually uses as its limit), own settings group, labels on the
+  opposite side of price from Entry/SL (above for a bullish bias, below
+  for bearish) since that's where the actual TP levels sit.
+
 - `indicators/JungleeFrogs/TRAP-ATM-MTF-ADX/JungleeFrogs_OrderBlock_Detector_Advanced_MACD_Predictor.pine`:
   merged the PRESSURE panel's separate "Bull Score" / "Bear Score" rows
   into one "Bull/Bear Score" row reading "X/100 or Y/100", colored by
@@ -149,6 +195,126 @@ file records what changed and when, file by file.
   red for both AVOID and SELL NOW, the same cases where `actionColor` is
   also red - red text on a red background, effectively illegible. Both
   now use `colRedTextCellBg` (yellow) instead.
+
+  Added a "Perfect Position (PP)" vertical line marker: fires on a bar
+  where a majority of the currently-visible 9/20/50/200 High+Low EMA
+  lines are bending (or tending to bend) against the prevailing
+  structure bias - e.g. bending up while structure is BEARISH, read as a
+  cluster reversal across all 8 lines rather than any single line.
+  Required majority scales with how many of the 8 lines are visible
+  (`ceil(visibleCount * 5/8)` - 5 of 8 when all are shown, proportionally
+  fewer if some are hidden, per spec). Draws a vertical line + "PP /
+  Perfect Position / Trend Break" label at that bar (fires once per
+  cluster, not on every qualifying bar). Note: Pine has no way to query
+  the chart's actual rendered price-axis bounds, so the line is drawn
+  tall (+/- 4x ATR beyond that bar's high/low) rather than a literal
+  edge-to-edge line like a manually-drawn one - tall enough to stand
+  out, bounded enough not to distort the chart's auto-scale.
+
+  Two fixes/refinements made after live testing showed PP wasn't firing
+  at an obvious reversal cluster (bottom of a decline, right where
+  GH/GL Cross fired):
+  - "Bending" now allows a per-line recency window ("PP Bend Recency
+    Window (Bars)" input, default 6), instead of requiring the exact
+    same bar for every line. A 9-period and a 200-period EMA never turn
+    on the same bar - the 200 is heavily lagged and confirms a reversal
+    many bars after the fast EMAs already have - so requiring an exact
+    single-bar match across all 8 was effectively unreachable in
+    practice. `ta.barssince()` is computed unconditionally for all 16
+    up/down combinations (same rule already learned from the
+    ta.crossover()/ta.crossunder() fix earlier - calling it only inside
+    a conditional branch corrupts its state).
+  - Each line now also counts as "bending" if it's decelerating (this
+    bar's slope is smaller in magnitude than the prior bar's, still
+    moving with the trend but slowing toward a turn) - a leading signal
+    alongside the already-flipped one, so PP can mark the width of a
+    real reversal cluster rather than only its exact pivot bars.
+
+  A third fix after live testing showed PP firing at a later local top
+  instead of the actual bottom of the decline: direction was gated on
+  `structureBias`, but that only flips via a confirmed CHoCH, which
+  happens well after price has already broken the prior swing high -
+  by which point the real EMA-cluster bottom (and the bend agreement
+  around it) is in the past. Removed that dependency; direction (up-
+  reversal vs down-reversal) is now judged purely from which way the
+  majority of the 8 lines are currently bending, tracked independently
+  (`ppUpCount`/`ppDownCount` against the same scaled threshold). The
+  label/line now reads "PP BUY" or "PP SELL" accordingly and is
+  positioned below the bar for a bottom reversal, above for a top one.
+
+  A fourth revision replaced the single-bar slope/deceleration checks
+  entirely with a smoothed window comparison (`f_reversing_up`/
+  `f_reversing_down`: net move over the last N bars vs. net move over
+  the N bars before that, N = the renamed "PP Curvature Window (Bars)"
+  input) - EMAs jitter bar to bar even mid-trend, so a strict 1-bar-vs-
+  1-bar slope comparison was too noisy to reliably land on the actual
+  visual turning point. This also removed the `ta.barssince()` calls
+  entirely (no longer needed), simplifying the whole block.
+
+  A fifth tuning pass after live testing showed PP now firing correctly
+  but ~4 candles later than where the EMAs visibly started bending:
+  halved the default "PP Curvature Window" from 6 to 3 bars (a shorter
+  window inherently detects the turn sooner, at the cost of some noise
+  resistance), and relaxed the deceleration threshold in
+  `f_reversing_up`/`f_reversing_down` from requiring the recent move to
+  have shrunk to less than half the prior move (0.5x) to just noticeably
+  smaller (0.75x) - so a line counts as reversing earlier in its bend,
+  not only once well into it. Both are adjustable in Settings if this
+  still isn't quite right for a given chart/timeframe.
+
+  Removed the "PP BUY"/"PP SELL" prefix from the PP label - it now just
+  reads "Perfect Position / Trend Break". `perfectPositionIsUp` still
+  drives label placement (below the bar for an up-reversal, above for a
+  down-reversal), just not the text anymore.
+
+  A sixth tuning pass, still ~2 candles later than the true bend start:
+  default "PP Curvature Window" lowered to 2 (its practical floor - a
+  1-bar window would reintroduce the original single-bar noise problem),
+  and the deceleration threshold in `f_reversing_up`/`f_reversing_down`
+  relaxed again, 0.75x -> 0.9x. Flagged in the input's tooltip that this
+  is now at the responsiveness ceiling for this detection method - any
+  further "earlier" push from here trades directly against false-
+  positive resistance, so the next lever if still late is the required-
+  agreement side (how many of the 8 lines must agree), not the window.
+
+  A seventh pass, after live testing showed the window=2/0.9x settings
+  had overcorrected - PP was now firing on ordinary EMA jitter rather
+  than genuine reversal clusters, drawing many overlapping markers
+  through a single trend. Walked the two detection knobs back to a
+  middle ground (window 2 -> 4, deceleration threshold 0.9x -> 0.7x),
+  and added the actual fix for the overlap problem: a cooldown ("PP
+  Cooldown (Bars)", default 10, same proven pattern as this file's
+  existing Buy/Sell signal cooldown) - `lastPPBar` tracks the bar of the
+  last marker, and a new candidate is suppressed until enough bars have
+  passed. This caps the noise regardless of how the detection knobs are
+  tuned, which the window/threshold tuning alone could not do.
+
+  An eighth and more fundamental redesign: PP is now anchored to a
+  confirmed swing pivot (the same `ta.pivotlow()`/`ta.pivothigh()` this
+  file already uses for market structure) instead of a free-floating
+  EMA-curvature threshold crossing. A pivot IS, by definition, the local
+  price extreme - live testing kept showing PP land near but not exactly
+  on the real turning point because a pure multi-EMA-curvature blend has
+  no inherent anchor to "this specific bar is the bottom/top," only to
+  "enough lines have curled by now." PP now fires only when a confirmed
+  pivot low/high coincides with a majority of the visible EMA lines
+  curling the matching direction, checked at the pivot bar itself
+  (`structRightBars` back from the confirmation bar) using the existing
+  window-curvature check. The marker is drawn at that same historical
+  pivot bar position (`bar_index - structRightBars`), matching the
+  convention this file already uses for swing labels, instead of at the
+  later confirmation bar.
+
+  A ninth fix: PP shared the main "Structure Pivot Left/Right Bars"
+  (default 5/5) with the BOS/CHoCH structure engine, which is
+  deliberately coarse to avoid noise in major structure calls - a
+  smaller, quicker local dip/top (exactly the kind PP is meant to catch)
+  often isn't a large enough swing to register as a pivot at that
+  window, so PP had no chance of firing there regardless of EMA
+  agreement. Gave PP its own independent, smaller-by-default pivot
+  window ("PP Pivot Left/Right Bars", default 3) via its own
+  `ta.pivotlow()`/`ta.pivothigh()` calls, decoupled from the structure
+  engine entirely.
 
   Added a "Momentum" row to the Dashboard (and its explanation on the
   Signal Read table) - `ta.mom(close, momLen)` (new "Momentum Length"
