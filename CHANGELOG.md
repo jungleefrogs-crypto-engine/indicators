@@ -10,6 +10,24 @@ file records what changed and when, file by file.
 ### Added
 
 - `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
+  moved the Demand/Supply zone info labels (STR/VOL/WIDTH/UNREALIZED)
+  off the current bar - they were anchored at `bar_index`, overlapping
+  the TP/SL/Entry labels and price scale that live in that same space.
+  Two more rounds after that: `chart.right_visible_bar_time` (the first
+  fix) turned out to still not be enough, because on a normal live
+  chart the latest candle sits close to the right edge with only a
+  small margin - the "visible space to the right of price" it was
+  computing from is usually narrow, not the large gap that approach
+  assumed. Replaced it with what the user actually specified: labels
+  now sit a multiple of the zone's OWN width past its right boundary
+  ("Zone Info Label Spacing (x Zone Width)", default 2.0) - self-scales
+  with the actual zone size instead of depending on any chart-viewport
+  assumption. Also switched `label.style_label_left` -> `label_right` so
+  the label box extends further away from the zone as it grows, never
+  back toward it (the previous style could let the box's own width
+  creep back over the zone regardless of how far the anchor was placed).
+
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
   fixed PP still not marking a genuinely obvious reversal even after the
   cooldown fix - `ta.pivotlow()`/`ta.pivothigh()` require the low/high to
   be STRICTLY the most extreme bar in the window, so a flat or double-

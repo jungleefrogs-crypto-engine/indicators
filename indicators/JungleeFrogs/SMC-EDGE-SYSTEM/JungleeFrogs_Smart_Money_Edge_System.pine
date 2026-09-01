@@ -212,6 +212,7 @@ colDemandZoneFill = input.color(color.new(color.green, 82), "Demand Zone Fill", 
 colDemandZoneBorder = input.color(color.rgb(0, 100, 0), "Demand Zone Border", group=groupZone)
 colSupplyZoneFill = input.color(color.new(color.red, 82), "Supply Zone Fill", group=groupZone)
 colSupplyZoneBorder = input.color(color.red, "Supply Zone Border", group=groupZone)
+zoneLabelSpacingMult = input.float(2.0, "Zone Info Label Spacing (x Zone Width)", minval=0.5, maxval=20.0, step=0.5, group=groupZone, tooltip="How far past the zone's own right boundary the Demand/Supply info labels (STR/VOL/WIDTH/UNREALIZED) sit, as a multiple of that zone's own width - self-scales with the zone instead of a fixed bar count, so it stays clear of the box at any zoom. Raise this directly if it's still landing too close.")
 
 //=========================================================
 // MARKET STRUCTURE (BOS / CHoCH)
@@ -1444,7 +1445,14 @@ if barstate.islast
         demandZoneBox := box.new(left=demandBorn, top=demandHigh, right=bar_index + 1, bottom=demandLow, xloc=xloc.bar_index, bgcolor=demandBoxFill, border_color=demandBoxBorder, border_style=demandActive ? line.style_solid : line.style_dashed)
         demandVolText = "\nVOL: " + f_format_vol(demandVolumeStored)
         demandVolatilityText = na(demandVolatilityRatio) ? "" : "\nWIDTH: " + str.tostring(demandVolatilityRatio, "#.##") + "x ATR"
-        demandZoneLabel := label.new(bar_index, demandHigh, "DEMAND" + demandStatusText + "\nSTR: " + str.tostring(demandScoreStored, "#.0") + demandVolText + demandOiText + demandVolatilityText + "\nUNREALIZED: " + str.tostring(demandUnrealizedCount), style=label.style_label_left, color=demandBoxBorder, textcolor=color.white, size=size.small)
+        // Placed 2x the zone's own width past its right boundary, not a
+        // fixed bar count - self-scales with how wide the actual zone is
+        // instead of depending on chart zoom/scroll assumptions.
+        // label_right (not label_left) so the box extends further away
+        // from the zone, never back toward it.
+        demandZoneWidthBars = math.max(bar_index + 1 - demandBorn, 1)
+        demandLabelBarIndex = bar_index + 1 + math.round(demandZoneWidthBars * zoneLabelSpacingMult)
+        demandZoneLabel := label.new(demandLabelBarIndex, demandHigh, "DEMAND" + demandStatusText + "\nSTR: " + str.tostring(demandScoreStored, "#.0") + demandVolText + demandOiText + demandVolatilityText + "\nUNREALIZED: " + str.tostring(demandUnrealizedCount), xloc=xloc.bar_index, style=label.style_label_right, color=demandBoxBorder, textcolor=color.white, size=size.small)
 
     if showOrderBlocks and not na(supplyHigh) and not na(supplyLow) and not supplyConflictsWithActiveDemand
         supplyBoxFill = supplyActive ? colSupplyZoneFill : color.new(colSupplyZoneFill, 92)
@@ -1453,7 +1461,9 @@ if barstate.islast
         supplyZoneBox := box.new(left=supplyBorn, top=supplyHigh, right=bar_index + 1, bottom=supplyLow, xloc=xloc.bar_index, bgcolor=supplyBoxFill, border_color=supplyBoxBorder, border_style=supplyActive ? line.style_solid : line.style_dashed)
         supplyVolText = "\nVOL: " + f_format_vol(supplyVolumeStored)
         supplyVolatilityText = na(supplyVolatilityRatio) ? "" : "\nWIDTH: " + str.tostring(supplyVolatilityRatio, "#.##") + "x ATR"
-        supplyZoneLabel := label.new(bar_index, supplyHigh, "SUPPLY" + supplyStatusText + "\nSTR: " + str.tostring(supplyScoreStored, "#.0") + supplyVolText + supplyOiText + supplyVolatilityText + "\nUNREALIZED: " + str.tostring(supplyUnrealizedCount), style=label.style_label_left, color=supplyBoxBorder, textcolor=color.white, size=size.small)
+        supplyZoneWidthBars = math.max(bar_index + 1 - supplyBorn, 1)
+        supplyLabelBarIndex = bar_index + 1 + math.round(supplyZoneWidthBars * zoneLabelSpacingMult)
+        supplyZoneLabel := label.new(supplyLabelBarIndex, supplyHigh, "SUPPLY" + supplyStatusText + "\nSTR: " + str.tostring(supplyScoreStored, "#.0") + supplyVolText + supplyOiText + supplyVolatilityText + "\nUNREALIZED: " + str.tostring(supplyUnrealizedCount), xloc=xloc.bar_index, style=label.style_label_right, color=supplyBoxBorder, textcolor=color.white, size=size.small)
 
 //=========================================================
 // CURRENT PRICE LINE - TradingView's own last-price line can't be
