@@ -263,7 +263,7 @@ minGradeToTradeInput = input.string("B", "Minimum Grade To Take a Backtest Trade
 // SESSION FILTER
 //=========================================================
 groupSession = "Session Filter (Opening / Mid-Day / Closing)"
-sessionTimezone = input.string("Asia/Kolkata", "Session Timezone", group=groupSession)
+sessionTimezone = input.string("Chart Timezone (Default)", "Session Timezone", options=["Chart Timezone (Default)", "Exchange", "UTC", "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Vancouver", "America/Tijuana", "America/Phoenix", "America/Denver", "America/Chihuahua", "America/Chicago", "America/Mexico_City", "America/El_Salvador", "America/Bogota", "America/Lima", "America/New_York", "America/Toronto", "America/Panama", "America/Caracas", "America/Santiago", "America/Halifax", "America/La_Paz", "America/Sao_Paulo", "America/Argentina/Buenos_Aires", "America/Montevideo", "Atlantic/Azores", "Atlantic/Cape_Verde", "Europe/London", "Europe/Lisbon", "Africa/Casablanca", "Europe/Paris", "Europe/Berlin", "Europe/Madrid", "Europe/Rome", "Africa/Lagos", "Europe/Athens", "Europe/Helsinki", "Europe/Kiev", "Africa/Cairo", "Africa/Johannesburg", "Europe/Moscow", "Europe/Istanbul", "Asia/Riyadh", "Africa/Nairobi", "Asia/Tehran", "Asia/Dubai", "Asia/Baku", "Asia/Kabul", "Asia/Karachi", "Asia/Tashkent", "Asia/Kolkata", "Asia/Colombo", "Asia/Kathmandu", "Asia/Dhaka", "Asia/Almaty", "Asia/Yangon", "Asia/Bangkok", "Asia/Jakarta", "Asia/Ho_Chi_Minh", "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Singapore", "Asia/Manila", "Australia/Perth", "Asia/Tokyo", "Asia/Seoul", "Australia/Darwin", "Australia/Sydney", "Australia/Brisbane", "Pacific/Noumea", "Pacific/Auckland", "Pacific/Fiji", "Pacific/Tongatapu"], group=groupSession, tooltip="\"Chart Timezone (Default)\" tracks whatever timezone your TradingView chart itself is set to (Chart Settings > Symbol > Timezone, or the clock icon on the time axis), so the session window always matches your chart's own time axis without picking one manually. \"Exchange\" instead always uses this symbol's own exchange timezone, regardless of how your chart is displayed - matches TradingView's own chart-timezone picker, which offers the same two special options alongside specific cities. Pick a specific city/timezone instead to track a session window fixed to a particular exchange, independent of both the chart display and this symbol's own exchange.")
 sessionStartHour = input.int(9, "Session Start Hour", minval=0, maxval=23, group=groupSession)
 sessionStartMinute = input.int(15, "Session Start Minute", minval=0, maxval=59, group=groupSession)
 sessionEndHour = input.int(15, "Session End Hour", minval=0, maxval=23, group=groupSession)
@@ -841,7 +841,11 @@ gradeMeetsMin = f_grade_rank(entryGradeText) >= minGradeRank
 //=========================================================
 // SESSION FILTER
 //=========================================================
-sessMinutesNow = hour(timenow, sessionTimezone) * 60 + minute(timenow, sessionTimezone)
+// Omitting the timezone argument makes hour()/minute() use the chart's
+// own display timezone automatically - that's the "Chart Timezone
+// (Default)" behavior. Any other selection passes its IANA timezone
+// string through explicitly.
+sessMinutesNow = sessionTimezone == "Chart Timezone (Default)" ? hour(timenow) * 60 + minute(timenow) : hour(timenow, sessionTimezone) * 60 + minute(timenow, sessionTimezone)
 sessStartMinutes = sessionStartHour * 60 + sessionStartMinute
 sessEndMinutes = sessionEndHour * 60 + sessionEndMinute
 inSession = sessMinutesNow >= sessStartMinutes and sessMinutesNow <= sessEndMinutes

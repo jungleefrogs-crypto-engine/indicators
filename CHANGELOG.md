@@ -10,6 +10,27 @@ file records what changed and when, file by file.
 ### Added
 
 - `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
+  expanded "Session Timezone"'s dropdown from ~25 to ~70 entries,
+  covering every UTC offset the same way TradingView's own native
+  chart-timezone picker does, and added "Exchange" alongside the
+  existing "Chart Timezone (Default)" - Pine's `hour()`/`minute()`
+  already accept the literal string "Exchange" as a valid timezone
+  (this symbol's own exchange timezone, independent of chart display),
+  matching the second special option TradingView's own picker offers.
+
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
+  changed "Session Timezone" from a free-text string field to a proper
+  dropdown (Pine has no dedicated timezone-input type, so this uses
+  `input.string()` with an explicit `options=[...]` list of common
+  exchange timezones) - default is now "Chart Timezone (Default)",
+  which omits the timezone argument to `hour()`/`minute()` entirely so
+  it automatically tracks whatever timezone the TradingView chart itself
+  is set to, instead of a hardcoded "Asia/Kolkata". Any other dropdown
+  choice still passes its IANA timezone string through explicitly, for
+  tracking a session fixed to a specific exchange regardless of the
+  chart's own display timezone.
+
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
   fixed the ACTION banner still showing red text on the neutral gray
   background for "PREPARE SELL" - `actionColor` treated "SELL NOW" and
   "PREPARE SELL" as the same red case, but `actionBg` only special-cased
