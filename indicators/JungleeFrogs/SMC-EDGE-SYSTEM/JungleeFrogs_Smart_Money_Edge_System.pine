@@ -1149,7 +1149,7 @@ f_row_bg(_col) =>
 
 actionText = trapHigh ? "AVOID" : buySignal ? "BUY NOW" : sellSignal ? "SELL NOW" : entryGradeSide == "BUY" ? "PREPARE BUY" : entryGradeSide == "SELL" ? "PREPARE SELL" : "WAIT"
 actionColor = trapHigh ? color.red : actionText == "BUY NOW" or actionText == "PREPARE BUY" ? color.lime : actionText == "SELL NOW" or actionText == "PREPARE SELL" ? color.red : color.white
-actionBg = trapHigh ? colRedTextCellBg : actionText == "BUY NOW" ? color.new(color.green, 0) : actionText == "SELL NOW" ? colRedTextCellBg : color.new(color.gray, 20)
+actionBg = trapHigh ? colRedTextCellBg : actionText == "BUY NOW" ? color.new(color.green, 0) : actionText == "SELL NOW" or actionText == "PREPARE SELL" ? colRedTextCellBg : color.new(color.gray, 20)
 
 var table dashTable = table.new(dashboardPos, 2, 16, bgcolor=color.new(color.black, 20), border_width=1)
 

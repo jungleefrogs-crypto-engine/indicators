@@ -10,6 +10,16 @@ file records what changed and when, file by file.
 ### Added
 
 - `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
+  fixed the ACTION banner still showing red text on the neutral gray
+  background for "PREPARE SELL" - `actionColor` treated "SELL NOW" and
+  "PREPARE SELL" as the same red case, but `actionBg` only special-cased
+  "SELL NOW" for the yellow background, so "PREPARE SELL" fell through
+  to gray. Audited every other cell across the Dashboard, Screener, and
+  Signal Read tables (all red-text branches already paired correctly
+  with `colRedTextCellBg`, either directly or via `f_row_bg()`) - this
+  was the only gap.
+
+- `indicators/JungleeFrogs/SMC-EDGE-SYSTEM/JungleeFrogs_Smart_Money_Edge_System.pine`:
   moved the Demand/Supply zone info labels (STR/VOL/WIDTH/UNREALIZED)
   off the current bar - they were anchored at `bar_index`, overlapping
   the TP/SL/Entry labels and price scale that live in that same space.
